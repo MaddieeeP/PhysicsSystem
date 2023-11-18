@@ -1,0 +1,10 @@
+{
+  "name": "com.daydream.physicsSystem",
+  "version": "0.0.0",
+  "displayName": "Physics System",
+  "description": "Systems designed to simplify realistic physics interactions",
+  "rootnamespace": "daydream",
+  "dependencies": {
+    "com.daydream.extensionmethods": "0.0.0"
+  }
+}
