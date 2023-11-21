@@ -17,14 +17,11 @@ public class PhysicsObject : MonoBehaviour
     private bool _grounded = false;
     public bool grounded { get { return _grounded; } }
 
-    public GameObject tether = null;
-    public float tetherMaxLength;
-
-    [SerializeField] private float _moveMaxSpeed = 5f;
+    [SerializeField] protected float _moveMaxSpeed = 5f;
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
-    [SerializeField] private float _moveMaxAcceleration = 0.5f;
+    [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
-    [SerializeField] private float _moveMaxDeceleration = 0.5f;
+    [SerializeField] protected float _moveMaxDeceleration = 0.5f;
     public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
 
 
@@ -148,7 +145,7 @@ public class PhysicsObject : MonoBehaviour
         }
     }
 
-    private void _groundedCheck(Vector3 force)
+    private void groundedCheck(Vector3 force)
     {
         Debug.DrawRay(bottomPosition, force.normalized * 10f, Color.red, 10f, true);
 
@@ -187,10 +184,8 @@ public class PhysicsObject : MonoBehaviour
 
     private Vector3 Move(Vector3 moveVector)
     {
-        float fixedTimeDelta = 0.01f;
-
         Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rigidBody.velocity.RemoveComponentInDirection(groundNormal); //v-u
-        Vector3 force = rigidBody.mass * velocityChange / fixedTimeDelta * 0.5f; //ma
+        Vector3 force = rigidBody.mass * velocityChange / Time.fixedDeltaTime * 0.5f; //ma
         
         if (velocityChange.magnitude != 0)
         {
@@ -209,48 +204,6 @@ public class PhysicsObject : MonoBehaviour
         return force;
     }
 
-    private void TetherUpdate()
-    {
-        if (Vector3.Distance(transform.position, tether.transform.position) < tetherMaxLength)
-        {
-            return;
-        }
-
-        Vector3 direction = (tether.transform.position - transform.position).normalized;
-
-        if (!rigidBody.velocity.IsComponentInDirectionPositive(direction))
-        {
-            rigidBody.velocity = rigidBody.velocity.FlattenAgainstDirection(direction);
-        }
-
-        transform.position = tether.transform.position - direction * tetherMaxLength;
-    }
-
-    public void PhysicsUpdate(Vector3 moveVector)
-    {
-        if (!hasPhysics)
-        {
-            return;
-        }
-
-        Vector3 totalForce = new Vector3(0f, 0f, 0f);
-        totalForce += Gravity();
-        //totalForce += AirResistance();
-        AddForceAtPosition(totalForce, collider.bounds.center);
-
-        Vector3 angularVelocity = rigidBody.angularVelocity;
-        Vector3 moveForce = Move(moveVector);
-        AddForce(moveForce);
-        rigidBody.angularVelocity = angularVelocity;
-
-        _groundedCheck(totalForce + moveForce);
-
-        if (tether != null)
-        {
-            TetherUpdate();
-        }
-    }
-
     public void PhysicsUpdate()
     {
         if (!hasPhysics)
@@ -261,14 +214,23 @@ public class PhysicsObject : MonoBehaviour
         Vector3 totalForce = new Vector3(0f, 0f, 0f);
         totalForce += Gravity();
         //totalForce += AirResistance();
-
         AddForceAtPosition(totalForce, collider.bounds.center);
-        _groundedCheck(totalForce);
+        
+        groundedCheck(rigidBody.velocity + totalForce / rigidBody.mass * Time.fixedDeltaTime);
+    }
 
-        if (tether != null)
-        {
-            TetherUpdate();
-        }
+    public void MoveWithForce(Vector3 moveVector)
+    {
+        Vector3 angularVelocity = rigidBody.angularVelocity;
+        Vector3 moveForce = Move(moveVector);
+        AddForce(moveForce);
+        rigidBody.angularVelocity = angularVelocity;
+    }
+
+    public void Halt()
+    {
+        rigidBody.velocity = Vector3.zero;
+        rigidBody.angularVelocity = Vector3.zero;
     }
 
     void Start()
@@ -279,5 +241,22 @@ public class PhysicsObject : MonoBehaviour
     void FixedUpdate()
     {
         PhysicsUpdate();
+    }
+
+    public void Tether(Vector3 tetherPoint, float tetherMaxLength)
+    {
+        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
+        {
+            return;
+        }
+
+        Vector3 direction = (tetherPoint - transform.position).normalized;
+
+        if (!rigidBody.velocity.IsComponentInDirectionPositive(direction))
+        {
+            rigidBody.velocity = rigidBody.velocity.FlattenAgainstDirection(direction);
+        }
+
+        transform.position = tetherPoint - direction * tetherMaxLength;
     }
 }
