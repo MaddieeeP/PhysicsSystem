@@ -13,43 +13,21 @@ public class PhysicsObject : MonoBehaviour
     public static float relativeTime = 1f;
     public static float velocityCap = 200f;
 
-    public bool hasPhysics = true;
-    private bool _grounded = false;
+    [SerializeField] protected float _height = 1f;
+    protected bool _hasPhysics = true;
+    protected bool _grounded = false;
+    [SerializeField] protected float _moveMaxSpeed = 5f;
+    [SerializeField] protected float _moveMaxAcceleration = 0.5f;
+    [SerializeField] protected float _moveMaxDeceleration = 0.5f;
+    protected List<GameObject> _currentCollsions = new List<GameObject>();
+
+    public float height { get { return _height; } }
+    public bool hasPhysics { get { return _hasPhysics; } set { _hasPhysics = value; } }
     public bool grounded { get { return _grounded; } }
 
-    [SerializeField] protected float _moveMaxSpeed = 5f;
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
-    [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
-    [SerializeField] protected float _moveMaxDeceleration = 0.5f;
     public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
-
-
-    private List<GameObject> _currentCollsions = new List<GameObject>();
-    public List<GameObject> currentCollisions { get { return _currentCollsions; } }
-
-
-
-
-
-
-    //FIX
-
-    public float airDensity = 1.2f;
-    public float airMagnitude = 0f; //Speed of airflow
-    private Vector3 _airDirection = Vector3.zero; //Direction of airflow
-    public Vector3 airDirection
-    {
-        get { return _airDirection.normalized; }
-        set { _airDirection = value.normalized; }
-    }
-
-
-
-
-
-
-
 
     public Vector3 totalGravity
     {
@@ -74,9 +52,11 @@ public class PhysicsObject : MonoBehaviour
     public float gravityMagnitude { get { return totalGravity.magnitude; } }
     public Vector3 gravityDirection { get { return totalGravity.normalized; } }
 
-    public Vector3 bottomOffset { get { return transform.up * (collider.bounds.center.y - collider.bounds.size.y / 2 + 0.01f); } } //FIX - LOCAL!!!!!!!!!!!
-    public Vector3 bottomPosition { get { return transform.position + bottomOffset; } }
+    public Vector3 bottomOffset { get { return bottomPosition - transform.position; } }
+    public Vector3 bottomPosition { get { return collider.bounds.center - 0.5f * transform.up * height; } }
     public Vector3 groundNormal { get { return GroundNormal(); } }
+
+    public List<GameObject> currentCollisions { get { return _currentCollsions; } }
 
     public Rigidbody rigidBody { get { return gameObject.GetComponent<Rigidbody>(); } }
     new Collider collider { get { return gameObject.GetComponent<Collider>(); } }
@@ -129,7 +109,7 @@ public class PhysicsObject : MonoBehaviour
 
     public void StandAt(Vector3 position)
     {
-        transform.position = position - bottomOffset; //FIX - gravity direction - ?
+        transform.position = position - bottomOffset;
     }
 
     public void StartCollisionCheck()
@@ -145,16 +125,13 @@ public class PhysicsObject : MonoBehaviour
         }
     }
 
-    private void groundedCheck(Vector3 force)
+    public bool GroundedCheck(Vector3 force = Vector3.down)
     {
-        Debug.DrawRay(bottomPosition, force.normalized * 10f, Color.red, 10f, true);
-
-        if (Physics.Raycast(bottomPosition, gravityDirection, 1f))
+        if (Physics.Raycast(bottomPosition, gravityDirection, 0.05f))
         {
-            _grounded = true;
-            return;
+            return true;
         }
-        _grounded = false;
+        return false;
     }
 
     private Vector3 GroundNormal()
@@ -172,14 +149,6 @@ public class PhysicsObject : MonoBehaviour
     private Vector3 Gravity()
     {
         return rigidBody.mass * totalGravity;
-    }
-
-    private Vector3 AirResistance() //FIX - a purely physics based approach is not a good idea. These values should be able to be tweaked in a more game-y way
-    {
-        float dragCoefficient = 0.1f;
-        float surfaceArea = (collider.bounds.size.x * collider.bounds.size.y + collider.bounds.size.y * collider.bounds.size.z + collider.bounds.size.z * collider.bounds.size.x) / 3f;
-        Vector3 force = 0.5f * airDensity * surfaceArea * (float)Math.Pow((airMagnitude - rigidBody.velocity.magnitude), 2) * (airDirection - rigidBody.velocity.normalized) * dragCoefficient;
-        return force;
     }
 
     private Vector3 Move(Vector3 moveVector)
@@ -206,17 +175,17 @@ public class PhysicsObject : MonoBehaviour
 
     public void PhysicsUpdate()
     {
-        if (!hasPhysics)
+        if (!_hasPhysics)
         {
             return;
         }
 
         Vector3 totalForce = new Vector3(0f, 0f, 0f);
         totalForce += Gravity();
-        //totalForce += AirResistance();
+        //totalForce += AirResistance(); -gamey
         AddForceAtPosition(totalForce, collider.bounds.center);
         
-        groundedCheck(rigidBody.velocity + totalForce / rigidBody.mass * Time.fixedDeltaTime);
+        _grounded = GroundedCheck(rigidBody.velocity + totalForce / rigidBody.mass * Time.fixedDeltaTime);
     }
 
     public void MoveWithForce(Vector3 moveVector)
