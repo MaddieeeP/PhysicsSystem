@@ -125,7 +125,7 @@ public class PhysicsObject : MonoBehaviour
         }
     }
 
-    public bool GroundedCheck(Vector3 force = Vector3.down)
+    public bool GroundedCheck(Vector3 force)
     {
         if (Physics.Raycast(bottomPosition, gravityDirection, 0.05f))
         {
