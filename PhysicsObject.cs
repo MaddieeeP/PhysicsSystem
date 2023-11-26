@@ -53,7 +53,7 @@ public class PhysicsObject : MonoBehaviour
     public Vector3 gravityDirection { get { return totalGravity.normalized; } }
 
     public Vector3 bottomOffset { get { return bottomPosition - transform.position; } }
-    public Vector3 bottomPosition { get { return collider.bounds.center - 0.5f * transform.up * height; } }
+    public Vector3 bottomPosition { get { return collider.bounds.center + transform.up * (- 0.5f * height + 0.01f); } }
     public Vector3 groundNormal { get { return GroundNormal(); } }
 
     public List<GameObject> currentCollisions { get { return _currentCollsions; } }
