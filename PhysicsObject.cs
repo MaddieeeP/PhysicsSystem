@@ -20,15 +20,15 @@ public class PhysicsObject : MonoBehaviour
     [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     [SerializeField] protected float _moveMaxDeceleration = 0.5f;
     protected List<GameObject> _currentCollsions = new List<GameObject>();
+    protected Vector3 _position = default(Vector3);
+    protected Quaternion _rotation = default(Quaternion);
 
     public float height { get { return _height; } }
     public bool hasPhysics { get { return _hasPhysics; } set { _hasPhysics = value; } }
     public bool grounded { get { return _grounded; } }
-
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
     public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
-
     public Vector3 totalGravity
     {
         get
@@ -51,13 +51,12 @@ public class PhysicsObject : MonoBehaviour
     }
     public float gravityMagnitude { get { return totalGravity.magnitude; } }
     public Vector3 gravityDirection { get { return totalGravity.normalized; } }
-
     public Vector3 bottomOffset { get { return bottomPosition - transform.position; } }
     public Vector3 bottomPosition { get { return collider.bounds.center + transform.up * (- 0.5f * height + 0.01f); } }
     public Vector3 groundNormal { get { return GroundNormal(); } }
-
     public List<GameObject> currentCollisions { get { return _currentCollsions; } }
-
+    public Vector3 position { get { return _position; } set { _position = value; } }
+    public Quaternion rotation { get { return _rotation; } set { _rotation = value; } }
     public Rigidbody rigidBody { get { return gameObject.GetComponent<Rigidbody>(); } }
     new Collider collider { get { return gameObject.GetComponent<Collider>(); } }
     public Mesh mesh { get { return gameObject.GetComponent<MeshFilter>().mesh; } }
@@ -99,11 +98,21 @@ public class PhysicsObject : MonoBehaviour
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force)
     {
+        if (!_hasPhysics) 
+        {
+            return;
+        }
+
         rigidBody.AddForce(force, forceMode);
     }
 
     public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
     {
+        if (!_hasPhysics)
+        {
+            return;
+        }
+
         rigidBody.AddForceAtPosition(force, position, forceMode);
     }
 
@@ -146,12 +155,7 @@ public class PhysicsObject : MonoBehaviour
         return normal.normalized;
     }
 
-    private Vector3 Gravity()
-    {
-        return rigidBody.mass * totalGravity;
-    }
-
-    private Vector3 Move(Vector3 moveVector)
+    private Vector3 MoveForce(Vector3 moveVector)
     {
         Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rigidBody.velocity.RemoveComponentInDirection(groundNormal); //v-u
         Vector3 force = rigidBody.mass * velocityChange / Time.fixedDeltaTime * 0.5f; //ma
@@ -177,25 +181,39 @@ public class PhysicsObject : MonoBehaviour
     {
         if (!_hasPhysics)
         {
+            Halt();
+            transform.position = _position;
+            transform.rotation = _rotation;
             return;
         }
 
-        Vector3 totalForce = new Vector3(0f, 0f, 0f);
-        totalForce += Gravity();
-        //totalForce += AirResistance(); -gamey
-        AddForceAtPosition(totalForce, collider.bounds.center);
+        _position = transform.position;
+        _rotation = transform.rotation;
+
+        AddForce(totalGravity, ForceMode.Acceleration);
         
-        _grounded = GroundedCheck(rigidBody.velocity + totalForce / rigidBody.mass * Time.fixedDeltaTime);
+        _grounded = GroundedCheck(rigidBody.velocity + totalGravity * Time.fixedDeltaTime);
     }
 
     public void MoveWithForce(Vector3 moveVector)
     {
+        if (!_hasPhysics)
+        {
+            return;
+        }
+
         Vector3 angularVelocity = rigidBody.angularVelocity;
-        Vector3 moveForce = Move(moveVector);
+        Vector3 moveForce = MoveForce(moveVector);
         AddForce(moveForce);
         rigidBody.angularVelocity = angularVelocity;
     }
 
+    public void Move(Vector3 moveVector)
+    {
+        _position += moveVector;
+        transform.position += moveVector;
+    }
+     
     public void Halt()
     {
         rigidBody.velocity = Vector3.zero;
