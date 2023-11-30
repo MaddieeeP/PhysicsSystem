@@ -14,14 +14,16 @@ public class PhysicsObject : MonoBehaviour
     public static float velocityCap = 200f;
 
     [SerializeField] protected float _height = 1f;
+    [SerializeField] protected float _groundedRayDist = 0.15f;
     protected bool _hasPhysics = true;
     protected bool _grounded = false;
     [SerializeField] protected float _moveMaxSpeed = 5f;
     [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     [SerializeField] protected float _moveMaxDeceleration = 0.5f;
-    protected List<GameObject> _currentCollsions = new List<GameObject>();
-    protected Vector3 _position = default(Vector3);
-    protected Quaternion _rotation = default(Quaternion);
+    private Dictionary<GravitationalField, Vector3> _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
+    private List<GameObject> _currentCollsions = new List<GameObject>();
+    protected Vector3 _position = default;
+    protected Quaternion _rotation = default;
 
     public float height { get { return _height; } }
     public bool hasPhysics { get { return _hasPhysics; } set { _hasPhysics = value; } }
@@ -29,28 +31,21 @@ public class PhysicsObject : MonoBehaviour
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
     public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
-    public Vector3 totalGravity
+    public Vector3 gravity
     {
         get
         {
-            Vector3 gravity = Vector3.zero;
-            foreach (GameObject obj in currentCollisions)
+            Vector3 gravityVector = Vector3.zero;
+            List<GravitationalField> fields = _fieldGravityVectors.Keys.ToList();
+            foreach (GravitationalField field in fields)
             {
-                GravitationalField field = obj.GetComponent<GravitationalField>();
-                if (field != null)
-                {
-                    if (field.overwrite)
-                    {
-                        return field.GetGravity(this);
-                    }
-                    gravity += field.GetGravity(this);
-                }
+                Vector3 vector = field.GetGravity(this);
+                _fieldGravityVectors[field] = vector;
+                gravityVector += vector;
             }
-            return gravity;
+            return gravityVector;
         }
     }
-    public float gravityMagnitude { get { return totalGravity.magnitude; } }
-    public Vector3 gravityDirection { get { return totalGravity.normalized; } }
     public Vector3 bottomOffset { get { return bottomPosition - transform.position; } }
     public Vector3 bottomPosition { get { return collider.bounds.center + transform.up * (- 0.5f * height + 0.01f); } }
     public Vector3 groundNormal { get { return GroundNormal(); } }
@@ -64,6 +59,13 @@ public class PhysicsObject : MonoBehaviour
     public void EnterCollision(Collision collision)
     {
         _currentCollsions.Add(collision.gameObject);
+
+        GravitationalField field = collision.gameObject.GetComponent<GravitationalField>();
+        if (field != null)
+        {
+            _fieldGravityVectors[field] = field.GetGravityOnEnter(this);
+            Debug.Log(collision.gameObject.name);
+        }
     }
 
     public void StayCollision(Collision collision)
@@ -79,6 +81,58 @@ public class PhysicsObject : MonoBehaviour
     public void ExitCollision(Collision collision)
     {
         _currentCollsions.Remove(collision.gameObject);
+
+        GravitationalField field = collision.gameObject.GetComponent<GravitationalField>();
+        if (field != null)
+        {
+            if (field.applyAfterExit)
+            {
+                _fieldGravityVectors[field] = field.GetGravityOnExit(this);
+            }
+            else
+            {
+                _fieldGravityVectors.Remove(field);
+            }
+        }
+    }
+
+    public void EnterTrigger(Collider collider)
+    {
+        _currentCollsions.Add(collider.gameObject);
+
+        GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
+        if (field != null)
+        {
+            _fieldGravityVectors[field] = field.GetGravityOnEnter(this);
+        }
+    }
+
+    public void StayTrigger(Collider collider)
+    {
+        GameObject obj = collider.gameObject;
+
+        if (!_currentCollsions.Contains(obj))
+        {
+            _currentCollsions.Add(obj);
+        }
+    }
+
+    public void ExitTrigger(Collider collider)
+    {
+        _currentCollsions.Remove(collider.gameObject);
+
+        GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
+        if (field != null)
+        {
+            if (field.applyAfterExit)
+            {
+                _fieldGravityVectors[field] = field.GetGravityOnExit(this);
+            }
+            else
+            {
+                _fieldGravityVectors.Remove(field);
+            }
+        }
     }
 
     public void OnCollisionEnter(Collision collision)
@@ -94,6 +148,21 @@ public class PhysicsObject : MonoBehaviour
     public void OnCollisionExit(Collision collision)
     {
         ExitCollision(collision);
+    }
+
+    public void OnTriggerEnter(Collider other)
+    {
+        EnterTrigger(other);
+    }
+
+    public void OnTriggerStay(Collider other)
+    {
+        StayTrigger(other);
+    }
+
+    public void OnTriggerExit(Collider other)
+    {
+        ExitTrigger(other);
     }
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force)
@@ -123,6 +192,7 @@ public class PhysicsObject : MonoBehaviour
 
     public void StartCollisionCheck()
     {
+        _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
         List<GravitationalField> fields = FindObjectsOfType<GravitationalField>().Cast<GravitationalField>().ToList();
 
         foreach (GravitationalField field in fields)
@@ -130,24 +200,29 @@ public class PhysicsObject : MonoBehaviour
             if (collider.bounds.Intersects(field.collider.bounds))
             {
                 _currentCollsions.Add(field.gameObject);
+                _fieldGravityVectors[field] = field.GetGravity(this);
             }
         }
     }
 
     public bool GroundedCheck(Vector3 force)
     {
+        Vector3 gravityDirection = gravity.normalized;
+
         if (Physics.Raycast(bottomPosition, gravityDirection, 0.05f))
         {
             return true;
         }
+
         return false;
     }
 
     private Vector3 GroundNormal()
     {
+        Vector3 gravityDirection = gravity.normalized;
         Vector3 normal = -1f * gravityDirection;
 
-        if (Physics.Raycast(bottomPosition, gravityDirection, out RaycastHit hit, 0.15f))
+        if (Physics.Raycast(bottomPosition, gravityDirection, out RaycastHit hit, _groundedRayDist))
         {
             normal = hit.normal;
         }
@@ -190,9 +265,9 @@ public class PhysicsObject : MonoBehaviour
         _position = transform.position;
         _rotation = transform.rotation;
 
-        AddForce(totalGravity, ForceMode.Acceleration);
+        AddForce(gravity, ForceMode.Acceleration);
         
-        _grounded = GroundedCheck(rigidBody.velocity + totalGravity * Time.fixedDeltaTime);
+        _grounded = GroundedCheck(rigidBody.velocity + gravity * Time.fixedDeltaTime);
     }
 
     public void MoveWithForce(Vector3 moveVector)
