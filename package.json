@@ -5,6 +5,8 @@
   "description": "Systems designed to simplify realistic physics interactions",
   "rootnamespace": "daydream",
   "dependencies": {
-    "com.daydream.extensionmethods": "0.0.0"
+    "com.unity.splines": "2.0.0",
+    "com.daydream.extensionmethods": "0.0.0",
+    "com.daydream.splineextensions": "0.0.0"
   }
 }

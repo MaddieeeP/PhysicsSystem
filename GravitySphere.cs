@@ -1,18 +1,27 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class GravitySphere : MonoBehaviour
+[RequireComponent(typeof(SphereCollider))]
+
+public class GravitySphere : GravitationalField
 {
-    // Start is called before the first frame update
-    void Start()
+    public new SphereCollider collider { get { return transform.GetComponent<SphereCollider>(); } }
+
+    public override Vector3 GetGravity(PhysicsObject obj)
     {
-        
+        Vector3 positionDifference = transform.TransformPoint(collider.center) - obj.transform.position;
+        return positionDifference.normalized * magnitude * Math.Clamp(_fallOff.Evaluate(positionDifference.magnitude / collider.radius), 0f, 1f) * _invertMultiplier;
     }
 
-    // Update is called once per frame
-    void Update()
+    public override Vector3 GetGravityOnEnter(PhysicsObject obj)
     {
-        
+        return GetGravity(obj);
+    }
+
+    public override Vector3 GetGravityOnExit(PhysicsObject obj)
+    {
+        return GetGravity(obj);
     }
 }

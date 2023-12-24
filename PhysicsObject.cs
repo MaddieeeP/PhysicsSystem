@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using UnityEngine;
 
@@ -10,62 +11,50 @@ using UnityEngine;
 
 public class PhysicsObject : MonoBehaviour
 {
-    public static float relativeTime = 1f;
-    public static float velocityCap = 200f;
+    private const float velocityCap = 200f;
+    private const float angularVelocityCap = 200f;
 
-    [SerializeField] protected float _height = 1f;
-    [SerializeField] protected float _groundedRayDist = 0.15f;
-    protected bool _hasPhysics = true;
-    protected bool _grounded = false;
+    [SerializeField] protected float relativeTime = 1f;
+    [SerializeField] protected float _colliderBottomToCenterDist = 1f;
+    [SerializeField] protected float _hoverHeight = 0.5f;
+    [SerializeField] protected float _hoverStrength = 50f;
+    [SerializeField] protected float _hoverDamp = 20f;
+    [SerializeField] protected float _hoverSnap = 0.1f;
+    [SerializeField] protected float _orientStrength = 100f;
+    [SerializeField] protected float _orientDamp = 20f;
     [SerializeField] protected float _moveMaxSpeed = 5f;
     [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     [SerializeField] protected float _moveMaxDeceleration = 0.5f;
+    protected bool _grounded = false;
     private Dictionary<GravitationalField, Vector3> _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
+    private Vector3 _gravity = default;
+    private Vector3 _groundNormal = default;
     private List<GameObject> _currentCollsions = new List<GameObject>();
     protected Vector3 _position = default;
     protected Quaternion _rotation = default;
 
-    public float height { get { return _height; } }
-    public bool hasPhysics { get { return _hasPhysics; } set { _hasPhysics = value; } }
+    private Vector3 _forceAccumulator = default;
+    private Vector3 _torqueAccumulator = default;
+
+    //getters and setters
+    public bool isKinematic { get { return rigidBody.isKinematic; } set { rigidBody.isKinematic = value; } }
     public bool grounded { get { return _grounded; } }
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
     public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
-    public Vector3 gravity
-    {
-        get
-        {
-            Vector3 gravityVector = Vector3.zero;
-            List<GravitationalField> fields = _fieldGravityVectors.Keys.ToList();
-            foreach (GravitationalField field in fields)
-            {
-                Vector3 vector = field.GetGravity(this);
-                _fieldGravityVectors[field] = vector;
-                gravityVector += vector;
-            }
-            return gravityVector;
-        }
-    }
-    public Vector3 bottomOffset { get { return bottomPosition - transform.position; } }
-    public Vector3 bottomPosition { get { return collider.bounds.center + transform.up * (- 0.5f * height + 0.01f); } }
-    public Vector3 groundNormal { get { return GroundNormal(); } }
+    public Vector3 gravity { get { return _gravity; } }
+    public Vector3 groundNormal { get { return _groundNormal; } }
     public List<GameObject> currentCollisions { get { return _currentCollsions; } }
     public Vector3 position { get { return _position; } set { _position = value; } }
     public Quaternion rotation { get { return _rotation; } set { _rotation = value; } }
-    public Rigidbody rigidBody { get { return gameObject.GetComponent<Rigidbody>(); } }
-    new Collider collider { get { return gameObject.GetComponent<Collider>(); } }
-    public Mesh mesh { get { return gameObject.GetComponent<MeshFilter>().mesh; } }
+    public Vector3 colliderBottomPosition { get { return transform.position - transform.up * Math.Abs(_colliderBottomToCenterDist); } }
+
+    //encapsulation
+    private Rigidbody rigidBody { get { return gameObject.GetComponent<Rigidbody>(); } }
 
     public void EnterCollision(Collision collision)
     {
         _currentCollsions.Add(collision.gameObject);
-
-        GravitationalField field = collision.gameObject.GetComponent<GravitationalField>();
-        if (field != null)
-        {
-            _fieldGravityVectors[field] = field.GetGravityOnEnter(this);
-            Debug.Log(collision.gameObject.name);
-        }
     }
 
     public void StayCollision(Collision collision)
@@ -81,19 +70,6 @@ public class PhysicsObject : MonoBehaviour
     public void ExitCollision(Collision collision)
     {
         _currentCollsions.Remove(collision.gameObject);
-
-        GravitationalField field = collision.gameObject.GetComponent<GravitationalField>();
-        if (field != null)
-        {
-            if (field.applyAfterExit)
-            {
-                _fieldGravityVectors[field] = field.GetGravityOnExit(this);
-            }
-            else
-            {
-                _fieldGravityVectors.Remove(field);
-            }
-        }
     }
 
     public void EnterTrigger(Collider collider)
@@ -167,28 +143,80 @@ public class PhysicsObject : MonoBehaviour
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force)
     {
-        if (!_hasPhysics) 
+        if (isKinematic || force == Vector3.zero)
         {
             return;
         }
 
-        rigidBody.AddForce(force, forceMode);
+        Vector3 interpretedForce = default;
+
+        switch (forceMode)
+        {
+            case ForceMode.Force:
+                interpretedForce = force * Time.fixedDeltaTime * relativeTime / rigidBody.mass;
+                break;
+            case ForceMode.Acceleration:
+                interpretedForce = force * Time.fixedDeltaTime * relativeTime;
+                break;
+            case ForceMode.Impulse:
+                interpretedForce = force / rigidBody.mass;
+                break;
+            case ForceMode.VelocityChange:
+                interpretedForce = force;
+                break;
+        }
+
+        _forceAccumulator += interpretedForce;
+    }
+
+    public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force)
+    {
+        if (isKinematic || torque == Vector3.zero)
+        {
+            return;
+        }
+
+        Vector3 interpretedTorque = default;
+
+        switch (forceMode)
+        {
+            case ForceMode.Force:
+                interpretedTorque = torque * Time.fixedDeltaTime * relativeTime / rigidBody.mass;
+                break;
+            case ForceMode.Acceleration:
+                interpretedTorque = torque * Time.fixedDeltaTime * relativeTime;
+                break;
+            case ForceMode.Impulse:
+                interpretedTorque = torque / rigidBody.mass;
+                break;
+            case ForceMode.VelocityChange:
+                interpretedTorque = torque;
+                break;
+        }
+
+        _torqueAccumulator += interpretedTorque;
     }
 
     public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
     {
-        if (!_hasPhysics)
+        if (isKinematic || force == Vector3.zero)
         {
             return;
         }
 
-        rigidBody.AddForceAtPosition(force, position, forceMode);
+        Vector3 lever = position - transform.TransformPoint(rigidBody.centerOfMass); //TEST
+        Vector3 torque = force.RemoveComponentInDirection(lever) * lever.magnitude;
+
+        AddForce(force, forceMode);
+        AddTorque(torque, forceMode);
     }
 
-    public void StandAt(Vector3 position)
+    public void StandAt(Vector3 footingPosition, Vector3 up)
     {
-        transform.position = position - bottomOffset;
+        transform.position = footingPosition + up * _colliderBottomToCenterDist;
     }
+
+    public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
 
     public void StartCollisionCheck()
     {
@@ -197,7 +225,7 @@ public class PhysicsObject : MonoBehaviour
 
         foreach (GravitationalField field in fields)
         {
-            if (collider.bounds.Intersects(field.collider.bounds))
+            if (GetComponent<Collider>().bounds.Intersects(field.GetComponent<Collider>().bounds))
             {
                 _currentCollsions.Add(field.gameObject);
                 _fieldGravityVectors[field] = field.GetGravity(this);
@@ -205,40 +233,48 @@ public class PhysicsObject : MonoBehaviour
         }
     }
 
-    public bool GroundedCheck(Vector3 force)
+    public void CheckGround(Vector3 deltaVelocity)
     {
         Vector3 gravityDirection = gravity.normalized;
-
-        if (Physics.Raycast(bottomPosition, gravityDirection, 0.05f))
+        Vector3 deltaMovement = ((rigidBody.velocity + deltaVelocity) * Time.fixedDeltaTime) + (transform.rotation * Vector3.up * -_hoverHeight);
+        if (Physics.Raycast(colliderBottomPosition, deltaMovement.normalized, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
-            return true;
+            _groundNormal = hit.normal;
+            _grounded = true;
+            return;
         }
-
-        return false;
+        _groundNormal = -1f * gravityDirection;
+        _grounded = false;
     }
 
-    private Vector3 GroundNormal()
+    public void HoverWithForce() //FIX - ? Did I fix it?
     {
         Vector3 gravityDirection = gravity.normalized;
-        Vector3 normal = -1f * gravityDirection;
+        Vector3 hoverForce = default;
 
-        if (Physics.Raycast(bottomPosition, gravityDirection, out RaycastHit hit, _groundedRayDist))
+        if (Physics.Raycast(colliderBottomPosition, gravityDirection, out RaycastHit hit, float.PositiveInfinity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
-            normal = hit.normal;
+            float maxMultiplier = 1 / Time.fixedDeltaTime;
+            float hoverError = _hoverHeight - hit.distance;
+            Vector3 velocityParallelToGravity = rigidBody.velocity.ComponentInDirection(gravityDirection);
+            bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
+            
+            if (hoverError > 0)
+            {
+                hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) - (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
+            }
+            else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap)
+            {
+                hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
+            }
         }
-
-        return normal.normalized;
+        AddForce(hoverForce, ForceMode.Acceleration);
     }
 
-    private Vector3 MoveForce(Vector3 moveVector)
+    public void MoveWithForce(Vector3 moveVector)
     {
         Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rigidBody.velocity.RemoveComponentInDirection(groundNormal); //v-u
-        Vector3 force = rigidBody.mass * velocityChange / Time.fixedDeltaTime * 0.5f; //ma
-        
-        if (velocityChange.magnitude != 0)
-        {
-            force = force / velocityChange.magnitude;
-        }
+        Vector3 force = velocityChange.normalized / Time.fixedDeltaTime * 0.5f;
 
         if (velocityChange.IsComponentInDirectionPositive(rigidBody.velocity) || rigidBody.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
         {
@@ -249,12 +285,27 @@ public class PhysicsObject : MonoBehaviour
             force = force * Math.Min(moveMaxDeceleration, velocityChange.magnitude);
         }
 
-        return force;
+        AddForce(force, ForceMode.Acceleration);
+    }
+
+    public void OrientWithForce(Quaternion targetRotation) //FIX
+    {
+        Quaternion deltaRotation = transform.rotation.ShortestRotation(targetRotation);
+        Vector3 rotAxis;
+        float rotDegrees;
+
+        deltaRotation.ToAngleAxis(out rotDegrees, out rotAxis);
+        rotAxis.Normalize();
+
+        float rotRadians = rotDegrees * Mathf.Deg2Rad;
+        Vector3 rotationForce = rotAxis * rotRadians * _orientStrength - rigidBody.angularVelocity * _orientDamp;
+        
+        AddTorque(rotationForce, ForceMode.Acceleration);
     }
 
     public void PhysicsUpdate()
     {
-        if (!_hasPhysics)
+        if (isKinematic)
         {
             Halt();
             transform.position = _position;
@@ -265,34 +316,60 @@ public class PhysicsObject : MonoBehaviour
         _position = transform.position;
         _rotation = transform.rotation;
 
-        AddForce(gravity, ForceMode.Acceleration);
-        
-        _grounded = GroundedCheck(rigidBody.velocity + gravity * Time.fixedDeltaTime);
-    }
+        CheckGround(_forceAccumulator);
 
-    public void MoveWithForce(Vector3 moveVector)
-    {
-        if (!_hasPhysics)
+        //This is the only place where forces should be applied to the rigidbody
+        //GroundedCheck and other code rely on _forceAccumulator and _torqueAccumulator being representative of ALL forces/torque being applied
+        rigidBody.velocity += _forceAccumulator;
+        rigidBody.angularVelocity += _torqueAccumulator;
+
+        if (rigidBody.velocity.magnitude > velocityCap)
         {
-            return;
+            rigidBody.velocity.SetMagnitude(velocityCap);
+        }
+        if (rigidBody.angularVelocity.magnitude > angularVelocityCap)
+        {
+            rigidBody.angularVelocity.SetMagnitude(angularVelocityCap);
         }
 
-        Vector3 angularVelocity = rigidBody.angularVelocity;
-        Vector3 moveForce = MoveForce(moveVector);
-        AddForce(moveForce);
-        rigidBody.angularVelocity = angularVelocity;
+        _forceAccumulator = default;
+        _torqueAccumulator = default;
     }
 
     public void Move(Vector3 moveVector)
     {
-        _position += moveVector;
         transform.position += moveVector;
+        _position = transform.position;
     }
-     
+    
+    public void Orient(Quaternion newRotation)
+    {
+        transform.rotation = newRotation;
+        _rotation = newRotation;
+    }
+
+    public void UpdateGravity()
+    {
+        Vector3 newGravity = default;
+        List<GravitationalField> fields = _fieldGravityVectors.Keys.ToList();
+        foreach (GravitationalField field in fields)
+        {
+            Vector3 vector = field.GetGravity(this);
+            _fieldGravityVectors[field] = vector;
+            newGravity += vector;
+        }
+        _gravity = newGravity;
+    }
+
+    public void ApplyGravity()
+    {
+        AddForce(_gravity, ForceMode.Acceleration);
+    }
+
     public void Halt()
     {
-        rigidBody.velocity = Vector3.zero;
-        rigidBody.angularVelocity = Vector3.zero;
+        rigidBody.velocity = default;
+        rigidBody.angularVelocity = default;
     }
 
     void Start()
@@ -322,3 +399,5 @@ public class PhysicsObject : MonoBehaviour
         transform.position = tetherPoint - direction * tetherMaxLength;
     }
 }
+
+//use add force to add external forces to a total vector3 
