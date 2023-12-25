@@ -14,7 +14,7 @@ public class PhysicsObject : MonoBehaviour
     private const float velocityCap = 200f;
     private const float angularVelocityCap = 200f;
 
-    [SerializeField] protected float relativeTime = 1f;
+    [SerializeField] protected float _relativeTime = 1f;
     [SerializeField] protected float _colliderBottomToCenterDist = 1f;
     [SerializeField] protected float _hoverHeight = 0.5f;
     [SerializeField] protected float _hoverStrength = 50f;
@@ -37,7 +37,8 @@ public class PhysicsObject : MonoBehaviour
     private Vector3 _torqueAccumulator = default;
 
     //getters and setters
-    public bool isKinematic { get { return rigidBody.isKinematic; } set { rigidBody.isKinematic = value; } }
+    public float relativeTime { get { return _relativeTime; } set { _relativeTime = value; } }
+    public bool isKinematic { get { return rb.isKinematic; } set { rb.isKinematic = value; } }
     public bool grounded { get { return _grounded; } }
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
@@ -50,7 +51,7 @@ public class PhysicsObject : MonoBehaviour
     public Vector3 colliderBottomPosition { get { return transform.position - transform.up * Math.Abs(_colliderBottomToCenterDist); } }
 
     //encapsulation
-    private Rigidbody rigidBody { get { return gameObject.GetComponent<Rigidbody>(); } }
+    protected Rigidbody rb { get { return gameObject.GetComponent<Rigidbody>(); } }
 
     public void EnterCollision(Collision collision)
     {
@@ -153,13 +154,13 @@ public class PhysicsObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedForce = force * Time.fixedDeltaTime * relativeTime / rigidBody.mass;
+                interpretedForce = force * Time.fixedDeltaTime * relativeTime / rb.mass;
                 break;
             case ForceMode.Acceleration:
                 interpretedForce = force * Time.fixedDeltaTime * relativeTime;
                 break;
             case ForceMode.Impulse:
-                interpretedForce = force / rigidBody.mass;
+                interpretedForce = force / rb.mass;
                 break;
             case ForceMode.VelocityChange:
                 interpretedForce = force;
@@ -181,13 +182,13 @@ public class PhysicsObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedTorque = torque * Time.fixedDeltaTime * relativeTime / rigidBody.mass;
+                interpretedTorque = torque * Time.fixedDeltaTime * relativeTime / rb.mass;
                 break;
             case ForceMode.Acceleration:
                 interpretedTorque = torque * Time.fixedDeltaTime * relativeTime;
                 break;
             case ForceMode.Impulse:
-                interpretedTorque = torque / rigidBody.mass;
+                interpretedTorque = torque / rb.mass;
                 break;
             case ForceMode.VelocityChange:
                 interpretedTorque = torque;
@@ -204,7 +205,7 @@ public class PhysicsObject : MonoBehaviour
             return;
         }
 
-        Vector3 lever = position - transform.TransformPoint(rigidBody.centerOfMass); //TEST
+        Vector3 lever = position - transform.TransformPoint(rb.centerOfMass); //TEST
         Vector3 torque = force.RemoveComponentInDirection(lever) * lever.magnitude;
 
         AddForce(force, forceMode);
@@ -236,7 +237,7 @@ public class PhysicsObject : MonoBehaviour
     public void CheckGround(Vector3 deltaVelocity)
     {
         Vector3 gravityDirection = gravity.normalized;
-        Vector3 deltaMovement = ((rigidBody.velocity + deltaVelocity) * Time.fixedDeltaTime) + (transform.rotation * Vector3.up * -_hoverHeight);
+        Vector3 deltaMovement = ((rb.velocity + deltaVelocity) * Time.fixedDeltaTime) + (transform.rotation * Vector3.up * -_hoverHeight);
         if (Physics.Raycast(colliderBottomPosition, deltaMovement.normalized, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
             _groundNormal = hit.normal;
@@ -256,7 +257,7 @@ public class PhysicsObject : MonoBehaviour
         {
             float maxMultiplier = 1 / Time.fixedDeltaTime;
             float hoverError = _hoverHeight - hit.distance;
-            Vector3 velocityParallelToGravity = rigidBody.velocity.ComponentInDirection(gravityDirection);
+            Vector3 velocityParallelToGravity = rb.velocity.ComponentInDirection(gravityDirection);
             bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
             
             if (hoverError > 0)
@@ -273,10 +274,10 @@ public class PhysicsObject : MonoBehaviour
 
     public void MoveWithForce(Vector3 moveVector)
     {
-        Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rigidBody.velocity.RemoveComponentInDirection(groundNormal); //v-u
+        Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rb.velocity.RemoveComponentInDirection(groundNormal); //v-u
         Vector3 force = velocityChange.normalized / Time.fixedDeltaTime * 0.5f;
 
-        if (velocityChange.IsComponentInDirectionPositive(rigidBody.velocity) || rigidBody.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
+        if (velocityChange.IsComponentInDirectionPositive(rb.velocity) || rb.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
         {
             force = force * Math.Min(moveMaxAcceleration, velocityChange.magnitude);
         }
@@ -298,7 +299,7 @@ public class PhysicsObject : MonoBehaviour
         rotAxis.Normalize();
 
         float rotRadians = rotDegrees * Mathf.Deg2Rad;
-        Vector3 rotationForce = rotAxis * rotRadians * _orientStrength - rigidBody.angularVelocity * _orientDamp;
+        Vector3 rotationForce = rotAxis * rotRadians * _orientStrength - rb.angularVelocity * _orientDamp;
         
         AddTorque(rotationForce, ForceMode.Acceleration);
     }
@@ -320,16 +321,16 @@ public class PhysicsObject : MonoBehaviour
 
         //This is the only place where forces should be applied to the rigidbody
         //GroundedCheck and other code rely on _forceAccumulator and _torqueAccumulator being representative of ALL forces/torque being applied
-        rigidBody.velocity += _forceAccumulator;
-        rigidBody.angularVelocity += _torqueAccumulator;
+        rb.velocity += _forceAccumulator;
+        rb.angularVelocity += _torqueAccumulator;
 
-        if (rigidBody.velocity.magnitude > velocityCap)
+        if (rb.velocity.magnitude > velocityCap)
         {
-            rigidBody.velocity.SetMagnitude(velocityCap);
+            rb.velocity.SetMagnitude(velocityCap);
         }
-        if (rigidBody.angularVelocity.magnitude > angularVelocityCap)
+        if (rb.angularVelocity.magnitude > angularVelocityCap)
         {
-            rigidBody.angularVelocity.SetMagnitude(angularVelocityCap);
+            rb.angularVelocity.SetMagnitude(angularVelocityCap);
         }
 
         _forceAccumulator = default;
@@ -368,8 +369,8 @@ public class PhysicsObject : MonoBehaviour
 
     public void Halt()
     {
-        rigidBody.velocity = default;
-        rigidBody.angularVelocity = default;
+        rb.velocity = default;
+        rb.angularVelocity = default;
     }
 
     void Start()
@@ -391,9 +392,9 @@ public class PhysicsObject : MonoBehaviour
 
         Vector3 direction = (tetherPoint - transform.position).normalized;
 
-        if (!rigidBody.velocity.IsComponentInDirectionPositive(direction))
+        if (!rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            rigidBody.velocity = rigidBody.velocity.FlattenAgainstDirection(direction);
+            rb.velocity = rb.velocity.FlattenAgainstDirection(direction);
         }
 
         transform.position = tetherPoint - direction * tetherMaxLength;
