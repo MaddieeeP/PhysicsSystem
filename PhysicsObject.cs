@@ -25,11 +25,12 @@ public class PhysicsObject : MonoBehaviour
     [SerializeField] protected float _moveMaxSpeed = 5f;
     [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     [SerializeField] protected float _moveMaxDeceleration = 0.5f;
-    protected bool _grounded = false;
+    [SerializeField] protected List<Collider> _ignoreColliders = new List<Collider>();
+    private List<GameObject> _currentCollsions = new List<GameObject>();
     private Dictionary<GravitationalField, Vector3> _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
     private Vector3 _gravity = default;
+    protected bool _grounded = false;
     private Vector3 _groundNormal = default;
-    private List<GameObject> _currentCollsions = new List<GameObject>();
     protected Vector3 _position = default;
     protected Quaternion _rotation = default;
 
@@ -55,11 +56,21 @@ public class PhysicsObject : MonoBehaviour
 
     public void EnterCollision(Collision collision)
     {
+        if (_ignoreColliders.Contains(collision.collider))
+        {
+            return;
+        }
+
         _currentCollsions.Add(collision.gameObject);
     }
 
     public void StayCollision(Collision collision)
     {
+        if (_ignoreColliders.Contains(collision.collider))
+        {
+            return;
+        }
+
         GameObject obj = collision.gameObject;
 
         if (!_currentCollsions.Contains(obj))
@@ -70,11 +81,21 @@ public class PhysicsObject : MonoBehaviour
 
     public void ExitCollision(Collision collision)
     {
+        if (_ignoreColliders.Contains(collision.collider))
+        {
+            return;
+        }
+
         _currentCollsions.Remove(collision.gameObject);
     }
 
     public void EnterTrigger(Collider collider)
     {
+        if (_ignoreColliders.Contains(collider))
+        {
+            return;
+        }
+
         _currentCollsions.Add(collider.gameObject);
 
         GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
@@ -86,6 +107,11 @@ public class PhysicsObject : MonoBehaviour
 
     public void StayTrigger(Collider collider)
     {
+        if (_ignoreColliders.Contains(collider))
+        {
+            return;
+        }
+
         GameObject obj = collider.gameObject;
 
         if (!_currentCollsions.Contains(obj))
@@ -96,6 +122,11 @@ public class PhysicsObject : MonoBehaviour
 
     public void ExitTrigger(Collider collider)
     {
+        if (_ignoreColliders.Contains(collider))
+        {
+            return;
+        }
+
         _currentCollsions.Remove(collider.gameObject);
 
         GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
@@ -383,21 +414,38 @@ public class PhysicsObject : MonoBehaviour
         PhysicsUpdate();
     }
 
-    public void Tether(Vector3 tetherPoint, float tetherMaxLength)
+    public void TetherBounce(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 1f)
     {
         if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
         {
             return;
         }
 
-        Vector3 direction = (tetherPoint - transform.position).normalized;
+        Vector3 direction = (transform.position - tetherPoint).normalized;
 
-        if (!rb.velocity.IsComponentInDirectionPositive(direction))
+        if (rb.velocity.IsComponentInDirectionPositive(direction))
+        {
+            rb.velocity = rb.velocity - rb.velocity.ComponentInDirection(direction) * (1 + Math.Abs(bounceMultiplier));
+        }
+
+        transform.position = tetherPoint + direction * tetherMaxLength;
+    }
+
+    public void TetherFlatten(Vector3 tetherPoint, float tetherMaxLength)
+    {
+        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
+        {
+            return;
+        }
+
+        Vector3 direction = (transform.position - tetherPoint).normalized;
+
+        if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
             rb.velocity = rb.velocity.FlattenAgainstDirection(direction);
         }
 
-        transform.position = tetherPoint - direction * tetherMaxLength;
+        transform.position = tetherPoint + direction * tetherMaxLength;
     }
 }
 
