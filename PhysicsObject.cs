@@ -31,8 +31,6 @@ public class PhysicsObject : MonoBehaviour
     private Vector3 _gravity = default;
     protected bool _grounded = false;
     private Vector3 _groundNormal = default;
-    protected Vector3 _position = default;
-    protected Quaternion _rotation = default;
 
     private Vector3 _forceAccumulator = default;
     private Vector3 _torqueAccumulator = default;
@@ -47,8 +45,6 @@ public class PhysicsObject : MonoBehaviour
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
     public List<GameObject> currentCollisions { get { return _currentCollsions; } }
-    public Vector3 position { get { return _position; } set { _position = value; } }
-    public Quaternion rotation { get { return _rotation; } set { _rotation = value; } }
     public Vector3 colliderBottomPosition { get { return transform.position - transform.up * Math.Abs(_colliderBottomToCenterDist); } }
 
     //encapsulation
@@ -339,14 +335,10 @@ public class PhysicsObject : MonoBehaviour
     {
         if (isKinematic)
         {
-            Halt();
-            transform.position = _position;
-            transform.rotation = _rotation;
+            _forceAccumulator = default;
+            _torqueAccumulator = default;
             return;
         }
-
-        _position = transform.position;
-        _rotation = transform.rotation;
 
         CheckGround(_forceAccumulator);
 
@@ -371,13 +363,11 @@ public class PhysicsObject : MonoBehaviour
     public void Move(Vector3 moveVector)
     {
         transform.position += moveVector;
-        _position = transform.position;
     }
     
     public void Orient(Quaternion newRotation)
     {
         transform.rotation = newRotation;
-        _rotation = newRotation;
     }
 
     public void UpdateGravity()

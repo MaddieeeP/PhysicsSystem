@@ -17,7 +17,7 @@ public abstract class GravitationalField : MonoBehaviour
     public bool applyAfterExit { get { return _applyAfterExit; } }
     public float magnitude { get { return Math.Abs(_magnitude); } set { _magnitude = Math.Abs(value); } }
 
-    public Collider collider { get { return transform.GetComponent<Collider>(); } }
+    public new Collider collider { get { return transform.GetComponent<Collider>(); } }
 
     public abstract Vector3 GetGravity(PhysicsObject obj);
     public abstract Vector3 GetGravityOnEnter(PhysicsObject obj);
