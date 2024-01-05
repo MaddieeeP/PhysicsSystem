@@ -275,7 +275,7 @@ public class PhysicsObject : MonoBehaviour
         _grounded = false;
     }
 
-    public void HoverWithForce() //FIX - ? Did I fix it?
+    public void HoverWithForce() //FIX - Test more + touching ground + snap?
     {
         Vector3 gravityDirection = gravity.normalized;
         Vector3 hoverForce = default;
@@ -299,24 +299,35 @@ public class PhysicsObject : MonoBehaviour
         AddForce(hoverForce, ForceMode.Acceleration);
     }
 
-    public void MoveWithForce(Vector3 moveVector)
+    public void MoveWithForce(Vector3 moveVector, bool ignoreVelocity = false)
     {
-        Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rb.velocity.RemoveComponentInDirection(groundNormal); //v-u
-        Vector3 force = velocityChange.normalized / Time.fixedDeltaTime * 0.5f;
+        Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rb.velocity.RemoveComponentInDirection(groundNormal);
+        Vector3 force = default;
 
-        if (velocityChange.IsComponentInDirectionPositive(rb.velocity) || rb.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
+        if (ignoreVelocity)
         {
-            force = force * Math.Min(moveMaxAcceleration, velocityChange.magnitude);
+            force = moveVector;
         }
         else
         {
-            force = force * Math.Min(moveMaxDeceleration, velocityChange.magnitude);
+            force = velocityChange;
         }
+
+        if (velocityChange.IsComponentInDirectionPositive(rb.velocity) || rb.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
+        {
+            force = Vector3.ClampMagnitude(force, moveMaxAcceleration);
+        }
+        else
+        {
+            force = Vector3.ClampMagnitude(force, moveMaxDeceleration);
+        }
+
+        force = force / Time.fixedDeltaTime;
 
         AddForce(force, ForceMode.Acceleration);
     }
 
-    public void OrientWithForce(Quaternion targetRotation) //FIX
+    public void OrientWithForce(Quaternion targetRotation) //FIX?
     {
         Quaternion deltaRotation = transform.rotation.ShortestRotation(targetRotation);
         Vector3 rotAxis;
@@ -438,5 +449,3 @@ public class PhysicsObject : MonoBehaviour
         transform.position = tetherPoint + direction * tetherMaxLength;
     }
 }
-
-//use add force to add external forces to a total vector3 
