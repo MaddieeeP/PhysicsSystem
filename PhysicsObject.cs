@@ -432,21 +432,35 @@ public class PhysicsObject : MonoBehaviour
         transform.position = tetherPoint + direction * tetherMaxLength;
     }
 
-    public void TetherFlatten(Vector3 tetherPoint, float tetherMaxLength, float angleInfluence = 0f)
+    public void TetherFlatten(Vector3 tetherPoint, float tetherMaxLength)
     {
         if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
         {
             return;
         }
 
-        angleInfluence = Math.Clamp(angleInfluence, 0f, 1f);
-
         Vector3 direction = (transform.position - tetherPoint).normalized;
-        float magnitudeMultiplier = (1f - angleInfluence + (float)Math.Sin(Vector3.Angle(direction, rb.velocity)) * angleInfluence);
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            rb.velocity = rb.velocity.FlattenAgainstDirection(direction) * magnitudeMultiplier;
+            rb.velocity = rb.velocity.FlattenAgainstDirection(direction);
+        }
+
+        transform.position = tetherPoint + direction * tetherMaxLength;
+    }
+
+    public void TetherBalance(Vector3 tetherPoint, float tetherMaxLength)
+    {
+        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
+        {
+            return;
+        }
+
+        Vector3 direction = (transform.position - tetherPoint).normalized;
+
+        if (rb.velocity.IsComponentInDirectionPositive(direction))
+        {
+            AddForce(rb.velocity.ComponentInDirection(-direction), ForceMode.Acceleration);
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength;
