@@ -354,7 +354,7 @@ public class PhysicsObject : MonoBehaviour
         CheckGround(_forceAccumulator);
 
         //This is the only place where forces should be applied to the rigidbody
-        //GroundedCheck and other code rely on _forceAccumulator and _torqueAccumulator being representative of ALL forces/torque being applied
+        //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of ALL forces/torque being applied
         rb.velocity += _forceAccumulator;
         rb.angularVelocity += _torqueAccumulator;
 
@@ -444,23 +444,6 @@ public class PhysicsObject : MonoBehaviour
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
             rb.velocity = rb.velocity.FlattenAgainstDirection(direction);
-        }
-
-        transform.position = tetherPoint + direction * tetherMaxLength;
-    }
-
-    public void TetherBalance(Vector3 tetherPoint, float tetherMaxLength)
-    {
-        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
-        {
-            return;
-        }
-
-        Vector3 direction = (transform.position - tetherPoint).normalized;
-
-        if (rb.velocity.IsComponentInDirectionPositive(direction))
-        {
-            AddForce(rb.velocity.ComponentInDirection(-direction), ForceMode.Acceleration);
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength;
