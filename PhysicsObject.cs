@@ -233,7 +233,7 @@ public class PhysicsObject : MonoBehaviour
         }
 
         Vector3 lever = position - transform.TransformPoint(rb.centerOfMass); //TEST
-        Vector3 torque = force.RemoveComponentInDirection(lever) * lever.magnitude;
+        Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
 
         AddForce(force, forceMode);
         AddTorque(torque, forceMode);
@@ -284,7 +284,7 @@ public class PhysicsObject : MonoBehaviour
         {
             float maxMultiplier = 1 / Time.fixedDeltaTime;
             float hoverError = _hoverHeight - hit.distance;
-            Vector3 velocityParallelToGravity = rb.velocity.ComponentInDirection(gravityDirection);
+            Vector3 velocityParallelToGravity = rb.velocity.ComponentAlongAxis(gravityDirection);
             bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
             
             if (hoverError > 0)
@@ -301,7 +301,7 @@ public class PhysicsObject : MonoBehaviour
 
     public void MoveWithForce(Vector3 moveVector, bool ignoreVelocity = false)
     {
-        Vector3 velocityChange = moveVector.FlattenAgainstDirection(groundNormal) - rb.velocity.RemoveComponentInDirection(groundNormal);
+        Vector3 velocityChange = moveVector.FlattenAgainstAxis(groundNormal) - rb.velocity.RemoveComponentAlongAxis(groundNormal);
         Vector3 force = default;
 
         if (ignoreVelocity)
@@ -313,7 +313,7 @@ public class PhysicsObject : MonoBehaviour
             force = velocityChange;
         }
 
-        if (velocityChange.IsComponentInDirectionPositive(rb.velocity) || rb.velocity.ComponentInDirection(velocityChange) == Vector3.zero)
+        if (velocityChange.IsComponentInDirectionPositive(rb.velocity) || rb.velocity.ComponentAlongAxis(velocityChange) == Vector3.zero)
         {
             force = Vector3.ClampMagnitude(force, moveMaxAcceleration);
         }
@@ -426,7 +426,7 @@ public class PhysicsObject : MonoBehaviour
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            rb.velocity = rb.velocity - rb.velocity.ComponentInDirection(direction) * (1 + Math.Abs(bounceMultiplier));
+            rb.velocity = rb.velocity - rb.velocity.ComponentAlongAxis(direction) * (1 + Math.Abs(bounceMultiplier));
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength;
@@ -443,7 +443,25 @@ public class PhysicsObject : MonoBehaviour
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            rb.velocity = rb.velocity.FlattenAgainstDirection(direction);
+            rb.velocity = rb.velocity.FlattenAgainstAxis(direction);
+        }
+
+        transform.position = tetherPoint + direction * tetherMaxLength;
+    }
+
+    public void TetherBalance(Vector3 tetherPoint, float tetherMaxLength)
+    {
+        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
+        {
+            return;
+        }
+
+        Vector3 direction = (transform.position - tetherPoint).normalized;
+
+        if (rb.velocity.IsComponentInDirectionPositive(direction))
+        {
+            rb.velocity = rb.velocity.FlattenAgainstAxis(direction);
+            AddForce(-rb.velocity.ComponentAlongAxis(direction), ForceMode.Acceleration);
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength;
