@@ -43,9 +43,9 @@ public class PhysicActor : PhysicObject
             {
                 hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) - (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
             }
-            else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap)
+            else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap) //FIX
             {
-                hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
+                hoverForce = default; // (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
             }
         }
         AddForce(hoverForce, ForceMode.Acceleration);

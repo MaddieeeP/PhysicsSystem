@@ -138,7 +138,6 @@ public class PhysicObject : MonoBehaviour
     {
         Vector3 gravityDirection = gravity.normalized;
         Vector3 deltaMovement = (rb.velocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * raycastPaddingDist;
-        //Debug.DrawRay(colliderBottomPosition, deltaMovement);
         if (Physics.Raycast(colliderBottomPosition, deltaMovement, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
             _groundNormal = hit.normal;
@@ -175,7 +174,7 @@ public class PhysicObject : MonoBehaviour
         rb.angularVelocity = _subjectiveAngularVelocity * relativeTime;
     }
 
-    public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 1f)
+    public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f)
     {
         if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
         {
@@ -186,7 +185,7 @@ public class PhysicObject : MonoBehaviour
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            AddForce(rb.velocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)));
+            AddForce(rb.velocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), ForceMode.VelocityChange);
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength;
