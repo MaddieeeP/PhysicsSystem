@@ -19,7 +19,7 @@ public abstract class GravitationalField : MonoBehaviour
 
     public new Collider collider { get { return transform.GetComponent<Collider>(); } }
 
-    public abstract Vector3 GetGravity(PhysicsObject obj);
-    public abstract Vector3 GetGravityOnEnter(PhysicsObject obj);
-    public abstract Vector3 GetGravityOnExit(PhysicsObject obj);
+    public abstract Vector3 GetGravity(PhysicObject obj);
+    public abstract Vector3 GetGravityOnEnter(PhysicObject obj);
+    public abstract Vector3 GetGravityOnExit(PhysicObject obj);
 } 

@@ -11,7 +11,7 @@ public class WindZoneArea : WindArea
     [SerializeField] protected new float _magnitude = 1f;
     public new float magnitude { get { return _magnitude * windZone.windMain; } }
 
-    public new Vector3 GetWind(PhysicsObject obj)
+    public new Vector3 GetWind(PhysicObject obj)
     {
         return transform.forward * magnitude;
     }

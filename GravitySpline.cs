@@ -11,23 +11,23 @@ public class GravitySpline : GravitationalField
     [SerializeField] protected int _sampleResolution = 4;
     [SerializeField] protected int _sampleIterations = 2;
 
-    public override Vector3 GetGravity(PhysicsObject obj)
+    public override Vector3 GetGravity(PhysicObject obj)
     {
         Vector3 splinePoint = splineContainer.GetClosestPoint(obj.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
         return GetGravityAtPoint(obj, splinePoint, distance);
     }
 
-    public override Vector3 GetGravityOnEnter(PhysicsObject obj)
+    public override Vector3 GetGravityOnEnter(PhysicObject obj)
     {
         return GetGravity(obj);
     }
 
-    public override Vector3 GetGravityOnExit(PhysicsObject obj)
+    public override Vector3 GetGravityOnExit(PhysicObject obj)
     {
         return GetGravity(obj);
     }
 
-    protected Vector3 GetGravityAtPoint(PhysicsObject obj, Vector3 splinePoint, float distance)
+    protected Vector3 GetGravityAtPoint(PhysicObject obj, Vector3 splinePoint, float distance)
     {
         if (distance > _sampleMaxDistance) 
         { 

@@ -14,24 +14,24 @@ public class GravityTwist : GravitationalField
     [SerializeField] protected int _sampleResolution = 3;
     [SerializeField] protected int _sampleIterations = 5;
 
-    public override Vector3 GetGravity(PhysicsObject obj)
+    public override Vector3 GetGravity(PhysicObject obj)
     {
         splineContainer.GetClosestPoint(obj.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
         return GetGravityAtPoint(obj, 0, t, distance);
     }
 
-    public override Vector3 GetGravityOnEnter(PhysicsObject obj)
+    public override Vector3 GetGravityOnEnter(PhysicObject obj)
     {
         return GetGravity(obj);
     }
 
-    public override Vector3 GetGravityOnExit(PhysicsObject obj)
+    public override Vector3 GetGravityOnExit(PhysicObject obj)
     {
         splineContainer.GetClosestEndPoint(obj.transform.position, out float t, out float distance);
         return GetGravityAtPoint(obj, 0, t, distance);
     }
 
-    protected Vector3 GetGravityAtPoint(PhysicsObject obj, int splineIndex, float t, float distance)
+    protected Vector3 GetGravityAtPoint(PhysicObject obj, int splineIndex, float t, float distance)
     {
         if (distance > _sampleMaxDistance || _sampleMaxDistance == 0f)
         {

@@ -11,7 +11,7 @@ public class WindArea : MonoBehaviour
     [SerializeField] protected float _magnitude = 1f;
     public float magnitude { get { return Math.Abs(_magnitude); } set { _magnitude = Math.Abs(value); } }
 
-    public Vector3 GetWind(PhysicsObject obj)
+    public Vector3 GetWind(PhysicObject obj)
     {
         return transform.forward * magnitude;
     }
