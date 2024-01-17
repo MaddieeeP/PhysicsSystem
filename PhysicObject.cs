@@ -15,8 +15,7 @@ public class PhysicObject : MonoBehaviour
     private const float angularVelocityCap = 200f;
 
     [SerializeField] protected float _relativeTime = 1f;
-    [SerializeField] protected float _colliderBottomToCenterDist = 1f;
-    [SerializeField] protected float raycastPaddingDist = 0f;
+    [SerializeField] protected float _footToCenterDist = 1.2f;
     [SerializeField] protected List<Collider> _ignoreColliders = new List<Collider>();
     private List<GameObject> _currentCollsions = new List<GameObject>();
     private Dictionary<GravitationalField, Vector3> _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
@@ -37,10 +36,11 @@ public class PhysicObject : MonoBehaviour
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
     public List<GameObject> currentCollisions { get { return _currentCollsions; } }
-    public Vector3 colliderBottomPosition { get { return transform.position - transform.up * Math.Abs(_colliderBottomToCenterDist); } }
+    protected Vector3 subjectiveVelocity { get { return rb.velocity / relativeTime; } }
+    protected Vector3 subjectiveAngularVelocity { get { return rb.angularVelocity / relativeTime; } }
 
     //encapsulation
-    protected Rigidbody rb { get { return gameObject.GetComponent<Rigidbody>(); } }
+    private Rigidbody rb { get { return gameObject.GetComponent<Rigidbody>(); } }
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force)
     {
@@ -114,7 +114,7 @@ public class PhysicObject : MonoBehaviour
 
     public void StandAt(Vector3 footingPosition, Vector3 up)
     {
-        transform.position = footingPosition + up * _colliderBottomToCenterDist;
+        transform.position = footingPosition + up * _footToCenterDist;
     }
 
     public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
@@ -136,21 +136,21 @@ public class PhysicObject : MonoBehaviour
 
     public void CheckGround(Vector3 deltaVelocity)
     {
-        Vector3 gravityDirection = gravity.normalized;
-        Vector3 deltaMovement = (rb.velocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * raycastPaddingDist;
-        if (Physics.Raycast(colliderBottomPosition, deltaMovement, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        Vector3 deltaMovement = (subjectiveVelocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * _footToCenterDist;
+        if (Physics.Raycast(transform.position, deltaMovement, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
+            //Debug.DrawRay(transform.position, deltaMovement, Color.red, 0f, false);
             _groundNormal = hit.normal;
             _grounded = true;
             _groundPhysicMaterial = hit.collider.material;
             return;
         }
-        _groundNormal = -1f * gravityDirection;
+        _groundNormal = -gravity.normalized;
         _grounded = false;
         _groundPhysicMaterial = null;
     }
 
-    public void CheckGround() => CheckGround(_forceAccumulator);
+    public void CheckGround() => CheckGround(_forceAccumulator / relativeTime);
 
     public void ForceUpdate()
     {
@@ -161,14 +161,14 @@ public class PhysicObject : MonoBehaviour
             return;
         }
         
-        _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / relativeTime + _forceAccumulator, velocityCap);
-        _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / relativeTime + _torqueAccumulator, angularVelocityCap);
+        _subjectiveVelocity = Vector3.ClampMagnitude((rb.velocity + _forceAccumulator) / relativeTime, velocityCap);
+        _subjectiveAngularVelocity = Vector3.ClampMagnitude((rb.angularVelocity + _torqueAccumulator) / relativeTime, angularVelocityCap);
 
         _forceAccumulator = default;
         _torqueAccumulator = default;
 
-        //This is the only place where forces should be applied to the rigidbody
-        //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of ALL forces/torque being applied
+        //This is the only place where forces should actually be applied to the rigidbody
+        //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
 
         rb.velocity = _subjectiveVelocity * relativeTime;
         rb.angularVelocity = _subjectiveAngularVelocity * relativeTime;
