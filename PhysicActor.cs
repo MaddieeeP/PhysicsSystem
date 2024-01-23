@@ -51,7 +51,7 @@ public class PhysicActor : PhysicObject
 
             if (hoverError > 0)
             {
-                hoverForce = _hoverStrength * -hoverError * gravityDirection / Time.fixedDeltaTime - _hoverDamp * velocityParallelToGravity;
+                hoverForce = _hoverStrength * -hoverError * gravityDirection / Time.fixedDeltaTime - _hoverDamp * velocityParallelToGravity; //FIX - this needs to be more intuitive...????
             }
             else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap) //FIX
             {
@@ -106,7 +106,6 @@ public class PhysicActor : PhysicObject
     public void PhysicsUpdate(Vector3 moveInput, Vector3 targetForward, Transform relativeTransform)
     {
         MoveWithForce(moveInput, currentMoveStrength, currentMoveControl); //MoveWithForce must be before CheckGround()
-        ApplyGravity();
         CheckGround();
         CalculateCompositeUp();
 
@@ -120,35 +119,5 @@ public class PhysicActor : PhysicObject
         Vector2 moveInput = default;
         Transform relativeTransform = transform;
         PhysicsUpdate(relativeTransform.rotation * new Vector3(moveInput.x, 0f, moveInput.y), relativeTransform.forward, relativeTransform);
-    }
-
-    void OnCollisionEnter(Collision collision)
-    {
-        EnterCollision(collision);
-    }
-
-    void OnCollisionStay(Collision collision)
-    {
-        StayCollision(collision);
-    }
-
-    void OnCollisionExit(Collision collision)
-    {
-        ExitCollision(collision);
-    }
-
-    void OnTriggerEnter(Collider other)
-    {
-        EnterTrigger(other);
-    }
-
-    void OnTriggerStay(Collider other)
-    {
-        StayTrigger(other);
-    }
-
-    void OnTriggerExit(Collider other)
-    {
-        ExitTrigger(other);
     }
 }

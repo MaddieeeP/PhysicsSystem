@@ -16,10 +16,9 @@ public class PhysicObject : MonoBehaviour
 
     [SerializeField] protected float _relativeTime = 1f;
     [SerializeField] protected float _footToCenterDist = 1.2f;
-    [SerializeField] protected List<Collider> _ignoreColliders = new List<Collider>();
-    private List<GameObject> _currentCollsions = new List<GameObject>();
-    private Dictionary<GravitationalField, Vector3> _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
-    private Vector3 _gravity = default;
+    [SerializeField] protected bool _usePrevGravityIn0g = true;
+    [SerializeField] protected Vector3 _gravity = new Vector3(0f, 9.81f, 0f);
+    private Vector3 _gravityBuffer = default;
     protected bool _grounded = false;
     protected Vector3 _groundNormal = default;
     protected PhysicMaterial _groundPhysicMaterial;
@@ -35,15 +34,22 @@ public class PhysicObject : MonoBehaviour
     public bool grounded { get { return _grounded; } }
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
-    public List<GameObject> currentCollisions { get { return _currentCollsions; } }
     protected Vector3 subjectiveVelocity { get { return rb.velocity / relativeTime; } }
     protected Vector3 subjectiveAngularVelocity { get { return rb.angularVelocity / relativeTime; } }
 
     //encapsulation
     private Rigidbody rb { get { return gameObject.GetComponent<Rigidbody>(); } }
 
-    public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force)
+    public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
+        if (isGravityForce)
+        {
+            if(force.magnitude > _gravityBuffer.magnitude)
+            {
+                _gravityBuffer = force;
+            }
+        }
+
         if (isKinematic || force == Vector3.zero)
         {
             return;
@@ -98,7 +104,7 @@ public class PhysicObject : MonoBehaviour
         _torqueAccumulator += interpretedTorque;
     }
 
-    public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
+    public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
         if (isKinematic || force == Vector3.zero)
         {
@@ -108,7 +114,7 @@ public class PhysicObject : MonoBehaviour
         Vector3 lever = position - transform.TransformPoint(rb.centerOfMass); //TEST
         Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
 
-        AddForce(force, forceMode);
+        AddForce(force, forceMode, isGravityForce);
         AddTorque(torque, forceMode);
     }
 
@@ -118,21 +124,6 @@ public class PhysicObject : MonoBehaviour
     }
 
     public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
-
-    public void StartCollisionCheck()
-    {
-        _fieldGravityVectors = new Dictionary<GravitationalField, Vector3>() { };
-        List<GravitationalField> fields = FindObjectsOfType<GravitationalField>().Cast<GravitationalField>().ToList();
-
-        foreach (GravitationalField field in fields)
-        {
-            if (GetComponent<Collider>().bounds.Intersects(field.GetComponent<Collider>().bounds))
-            {
-                _currentCollsions.Add(field.gameObject);
-                _fieldGravityVectors[field] = field.GetGravity(this);
-            }
-        }
-    }
 
     public void CheckGround(Vector3 deltaVelocity)
     {
@@ -154,6 +145,14 @@ public class PhysicObject : MonoBehaviour
 
     public void ForceUpdate()
     {
+        if (_usePrevGravityIn0g && _gravityBuffer == default)
+        {
+            AddForce(_gravity, ForceMode.Acceleration, true);
+        }
+
+        _gravity = _gravityBuffer;
+        _gravityBuffer = default;
+
         if (isKinematic)
         {
             _forceAccumulator = default;
@@ -163,7 +162,7 @@ public class PhysicObject : MonoBehaviour
         
         _subjectiveVelocity = Vector3.ClampMagnitude((rb.velocity + _forceAccumulator) / relativeTime, velocityCap);
         _subjectiveAngularVelocity = Vector3.ClampMagnitude((rb.angularVelocity + _torqueAccumulator) / relativeTime, angularVelocityCap);
-
+        
         _forceAccumulator = default;
         _torqueAccumulator = default;
 
@@ -191,159 +190,15 @@ public class PhysicObject : MonoBehaviour
         transform.position = tetherPoint + direction * tetherMaxLength;
     }
 
-    public void UpdateGravity()
-    {
-        Vector3 newGravity = default;
-        List<GravitationalField> fields = _fieldGravityVectors.Keys.ToList();
-        foreach (GravitationalField field in fields)
-        {
-            Vector3 vector = field.GetGravity(this);
-            _fieldGravityVectors[field] = vector;
-            newGravity += vector;
-        }
-        _gravity = newGravity;
-    }
-
-    public void ApplyGravity()
-    {
-        UpdateGravity();
-        AddForce(_gravity, ForceMode.Acceleration);
-    }
-
     public void Halt()
     {
         _subjectiveVelocity = default;
         _subjectiveAngularVelocity = default;
     }
 
-    public void EnterCollision(Collision collision)
-    {
-        if (_ignoreColliders.Contains(collision.collider))
-        {
-            return;
-        }
-
-        _currentCollsions.Add(collision.gameObject);
-    }
-
-    public void StayCollision(Collision collision)
-    {
-        if (_ignoreColliders.Contains(collision.collider))
-        {
-            return;
-        }
-
-        GameObject obj = collision.gameObject;
-
-        if (!_currentCollsions.Contains(obj))
-        {
-            _currentCollsions.Add(obj);
-        }
-    }
-
-    public void ExitCollision(Collision collision)
-    {
-        if (_ignoreColliders.Contains(collision.collider))
-        {
-            return;
-        }
-
-        _currentCollsions.Remove(collision.gameObject);
-    }
-
-    public void EnterTrigger(Collider collider)
-    {
-        if (_ignoreColliders.Contains(collider))
-        {
-            return;
-        }
-
-        _currentCollsions.Add(collider.gameObject);
-
-        GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
-        if (field != null)
-        {
-            _fieldGravityVectors[field] = field.GetGravityOnEnter(this);
-        }
-    }
-
-    public void StayTrigger(Collider collider)
-    {
-        if (_ignoreColliders.Contains(collider))
-        {
-            return;
-        }
-
-        GameObject obj = collider.gameObject;
-
-        if (!_currentCollsions.Contains(obj))
-        {
-            _currentCollsions.Add(obj);
-        }
-    }
-
-    public void ExitTrigger(Collider collider)
-    {
-        if (_ignoreColliders.Contains(collider))
-        {
-            return;
-        }
-
-        _currentCollsions.Remove(collider.gameObject);
-
-        GravitationalField field = collider.gameObject.GetComponent<GravitationalField>();
-        if (field != null)
-        {
-            if (field.applyAfterExit)
-            {
-                _fieldGravityVectors[field] = field.GetGravityOnExit(this);
-            }
-            else
-            {
-                _fieldGravityVectors.Remove(field);
-            }
-        }
-    }
-
-    void Start()
-    {
-        StartCollisionCheck();
-    }
-
     void FixedUpdate()
     {
-        ApplyGravity();
-        CheckGround(_forceAccumulator);
+        CheckGround();
         ForceUpdate();
-    }
-
-    void OnCollisionEnter(Collision collision)
-    {
-        EnterCollision(collision);
-    }
-
-    void OnCollisionStay(Collision collision)
-    {
-        StayCollision(collision);
-    }
-
-    void OnCollisionExit(Collision collision)
-    {
-        ExitCollision(collision);
-    }
-
-    void OnTriggerEnter(Collider other)
-    {
-        EnterTrigger(other);
-    }
-
-    void OnTriggerStay(Collider other)
-    {
-        StayTrigger(other);
-    }
-
-    void OnTriggerExit(Collider other)
-    {
-        ExitTrigger(other);
     }
 }
