@@ -166,7 +166,7 @@ public class PhysicObject : MonoBehaviour
         _forceAccumulator = default;
         _torqueAccumulator = default;
 
-        //This is the only place where forces should actually be applied to the rigidbody
+        //This is the only place where forces should actually be applied to the rigidbody (except Halt())
         //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
 
         rb.velocity = _subjectiveVelocity * relativeTime;
@@ -194,6 +194,8 @@ public class PhysicObject : MonoBehaviour
     {
         _subjectiveVelocity = default;
         _subjectiveAngularVelocity = default;
+        rb.velocity = default;
+        rb.angularVelocity = default;
     }
 
     void FixedUpdate()
