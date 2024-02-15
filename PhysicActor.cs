@@ -7,6 +7,7 @@ using UnityEngine;
 
 public class PhysicActor : PhysicObject
 {
+    [SerializeField] protected float _minimumDynamicSpeed = 0.01f;
     [SerializeField] protected float _moveMaxSpeed = 5f;
     [SerializeField] protected float _moveMaxAcceleration = 0.5f;
     [SerializeField] protected float _moveMaxDeceleration = 0.5f;
@@ -32,7 +33,7 @@ public class PhysicActor : PhysicObject
     //getters and setters
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
     public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
-    public float moveMaxDeceleration { get { return Math.Abs(_moveMaxDeceleration); } }
+    public float moveMaxDeceleration { get { return Math.Max(Math.Abs(_moveMaxDeceleration), moveMaxAcceleration); } }
     public float currentOrientStrength { get { return grounded ? _orientStrengthGrounded : _orientStrengthAerial; } }
     public float currentMoveControl { get { return grounded ? _moveControlGrounded : _moveControlAerial; } }
     public float currentMoveStrength { get { return grounded ? _moveStrengthGrounded : _moveStrengthAerial; } }
@@ -61,22 +62,26 @@ public class PhysicActor : PhysicObject
         AddForce(hoverForce, ForceMode.VelocityChange);
     }
 
-    public void MoveWithForce(Vector3 moveInputVector, float strength = 1f, float control = 1f) //Accelerate subjectiveVelocity to moveInputVector or add moveInputVector as force to subjectiveVelocity until max speed reached
+    public void MoveWithForce(Vector3 moveInputVector, float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to moveInputVector or add moveInputVector as force to subjectiveVelocity until max speed reached
     {
         Vector3 moveVector = moveInputVector.FlattenAgainstAxis(groundNormal) * moveMaxSpeed;
-        Vector3 velocityChange = moveVector - subjectiveVelocity.RemoveComponentAlongAxis(groundNormal);
-        Vector3 additiveMoveVector = moveVector.normalized * Math.Min(velocityChange.SignedMagnitudeInDirection(moveVector), moveVector.magnitude);
+        Vector3 velocityOnPlane = subjectiveVelocity.RemoveComponentAlongAxis(groundNormal);
+        Vector3 velocityChange = moveVector - velocityOnPlane;
+        Vector3 additiveMoveVector = moveVector.ClampInDirection(velocityChange, out Vector3 _);
+        Vector3 force = Vector3.Lerp(additiveMoveVector, velocityChange, control) * strength; //lerp between additive force and change force
 
-        Vector3 force = Vector3.Lerp(additiveMoveVector, velocityChange, control) * strength;
-        force = velocityChange.IsComponentInDirectionPositive(-subjectiveVelocity) ? Vector3.ClampMagnitude(force, moveMaxDeceleration) : force = Vector3.ClampMagnitude(force, moveMaxAcceleration);
+        Vector3 forceParallel = force.ComponentAlongAxis(moveVector);
+        Vector3 forcePerpendicular = force - forceParallel;
+        Vector3 velocityParallel = velocityOnPlane.ComponentAlongAxis(forceParallel);
 
-        if (!_grounded)
+        forceParallel = forceParallel.ClampRelativeChange(velocityParallel, moveMaxAcceleration, moveMaxDeceleration, out _);
+        forcePerpendicular = Vector3.ClampMagnitude(forcePerpendicular, moveMaxDeceleration - forceParallel.magnitude); //perpendicular force will always be zero or a deceleration; total force magnitude will never exceed moveMaxDeceleration
+        force = forceParallel + forcePerpendicular;
+
+        if (_grounded)
         {
-            AddForce(force, ForceMode.VelocityChange);
-            return;
+            force *= subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
         }
-
-        force = subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < 0.01f ? force * _groundPhysicMaterial.staticFriction : force * _groundPhysicMaterial.dynamicFriction;
 
         AddForce(force, ForceMode.VelocityChange);
     }
@@ -100,7 +105,8 @@ public class PhysicActor : PhysicObject
     {
         Vector3 gravityUp = -gravity.normalized;
         float t = Vector3.Angle(gravityUp, groundNormal) / 180f;
-        _compositeUp = Vector3.Lerp(gravityUp, groundNormal, t).normalized;
+        float groundAngleMultiplier = Math.Clamp(_groundAngleInfluence.Evaluate(t), 0f, 1f);
+        _compositeUp = (gravityUp.normalized * (1 - t) + groundNormal * t).normalized;
     }
 
     public void PhysicsUpdate(Vector3 moveInput, Vector3 targetForward, Transform relativeTransform)

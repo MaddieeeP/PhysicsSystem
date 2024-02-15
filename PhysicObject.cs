@@ -44,10 +44,7 @@ public class PhysicObject : MonoBehaviour
     {
         if (isGravityForce)
         {
-            if(force.magnitude > _gravityBuffer.magnitude)
-            {
-                _gravityBuffer = force;
-            }
+            _gravityBuffer += force;
         }
 
         if (isKinematic || force == Vector3.zero)
@@ -148,9 +145,11 @@ public class PhysicObject : MonoBehaviour
         if (_usePrevGravityIn0g && _gravityBuffer == default)
         {
             AddForce(_gravity, ForceMode.Acceleration, true);
+        } else
+        {
+            _gravity = _gravityBuffer;
         }
 
-        _gravity = _gravityBuffer;
         _gravityBuffer = default;
 
         if (isKinematic)
