@@ -78,7 +78,7 @@ public class PhysicActor : PhysicObject
         forcePerpendicular = Vector3.ClampMagnitude(forcePerpendicular, moveMaxDeceleration - forceParallel.magnitude); //perpendicular force will always be zero or a deceleration; total force magnitude will never exceed moveMaxDeceleration
         force = forceParallel + forcePerpendicular;
 
-        if (_grounded)
+        if (grounded)
         {
             force *= subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
         }
@@ -98,7 +98,7 @@ public class PhysicActor : PhysicObject
     public void Jump()
     {
         AddForce(_compositeUp * _jumpVelocity, ForceMode.VelocityChange);
-        _grounded = false;
+        grounded = false;
     }
 
     public void CalculateCompositeUp()
