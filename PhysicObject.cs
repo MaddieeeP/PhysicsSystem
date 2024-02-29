@@ -15,7 +15,7 @@ public class PhysicObject : MonoBehaviour
     private const float angularVelocityCap = 100f;
     public static float globalTime = 1f;
 
-    [SerializeField] protected float _relativeTime = 1f;
+    [SerializeField] private float _relativeTime = 1f;
     [SerializeField] protected bool receiveGravityForceWhenPaused = false;
     [SerializeField] protected bool receiveNonGravityForceWhenPaused = false;
     [SerializeField] protected float _footToCenterDist = 1.2f;
@@ -31,7 +31,7 @@ public class PhysicObject : MonoBehaviour
     private Vector3 _subjectiveAngularVelocity = default;
     private Vector3 _forceAccumulator = default;
     private Vector3 _torqueAccumulator = default;
-    private float prevGlobalTime = 1f;
+    private float _prevGlobalTime = 1f;
 
     //getters and setters
     public float relativeTime { get { return _relativeTime; } set { SetRelativeTime(value); } }
@@ -40,8 +40,6 @@ public class PhysicObject : MonoBehaviour
     public bool grounded { get { return _grounded; } set { SetGrounded(value); } }
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
-    protected Vector3 subjectiveVelocity { get { return gameObject.GetComponent<Rigidbody>().velocity / relativeTime; } }
-    protected Vector3 subjectiveAngularVelocity { get { return gameObject.GetComponent<Rigidbody>().angularVelocity / relativeTime; } }
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
@@ -149,7 +147,9 @@ public class PhysicObject : MonoBehaviour
     {
         if (_relativeTime == 0f)
         {
+            _relativeTime = value;
             RefreshVelocities();
+            return;
         }
         _relativeTime = value;
     }
@@ -164,13 +164,23 @@ public class PhysicObject : MonoBehaviour
 
     public void CheckGround(Vector3 deltaVelocity)
     {
-        Vector3 deltaMovement = (subjectiveVelocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * _footToCenterDist;
-        if (Physics.Raycast(transform.position, deltaMovement, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        if (_paused)
         {
-            _groundNormal = hit.normal;
-            _grounded = true;
-            _groundPhysicMaterial = hit.collider.material;
             return;
+        }
+
+        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
+
+        Vector3 deltaMovement = (rb.velocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * _footToCenterDist;
+        if (deltaMovement.magnitude > 0f)
+        {
+            if (Physics.Raycast(transform.position, deltaMovement.normalized, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            {
+                _groundNormal = hit.normal;
+                _grounded = true;
+                _groundPhysicMaterial = hit.collider.material;
+                return;
+            }
         }
         _groundNormal = -gravity.normalized;
         _grounded = false;
@@ -182,6 +192,13 @@ public class PhysicObject : MonoBehaviour
     public void ForceUpdate()
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
+
+        if (_prevGlobalTime == 0f && globalTime != _prevGlobalTime)
+        {
+            RefreshVelocities(); //rigidbody velocity and angularVelocity must be recalculated before _subjectiveVelocity and _subjectiveAngularVelocity
+        }
+
+        _prevGlobalTime = globalTime;
 
         if (_paused) //_forceAccumulator and _torqueAccumulator are not reset so they will stack over time, velocity and angularVelocity will return after unpausing
         {
@@ -200,25 +217,22 @@ public class PhysicObject : MonoBehaviour
 
         _gravityBuffer = default; //_gravityBuffer is added to by ForceField objects between FixedUpdate calls
 
-        if (isKinematic) //force and torque are not applied
+        if (isKinematic) //force and torque are not applied, velocity and angularVelocity do not need to be reset, _subjectiveVelocity and _subjectiveAngularVelocity are reset
         {
             _forceAccumulator = default;
             _torqueAccumulator = default;
+            _subjectiveVelocity = default;
+            _subjectiveAngularVelocity = default;
             return;
         }
         
-        if (globalTime * _relativeTime == 0f) //force and torque are not applied, but _subjectiveVelocity and _subjectiveAngularVelocity are not reset
+        if (globalTime * _relativeTime == 0f) //force and torque are not applied, _subjectiveVelocity and _subjectiveAngularVelocity are not reset
         {
             _forceAccumulator = default;
             _torqueAccumulator = default;
             rb.velocity = default;
             rb.angularVelocity = default;
             return;
-        }
-
-        if (prevGlobalTime == 0f && globalTime != prevGlobalTime) //rigidbody velocity and angularVelocity must be recalculated before _subjectiveVelocity and _subjectiveAngularVelocity
-        {
-            RefreshVelocities();
         }
 
         //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force

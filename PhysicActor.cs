@@ -39,15 +39,32 @@ public class PhysicActor : PhysicObject
     public float currentMoveStrength { get { return grounded ? _moveStrengthGrounded : _moveStrengthAerial; } }
     public Vector3 compositeUp { get { return _compositeUp.normalized; } }
 
-    public void HoverWithForce() //FIX - Test more + touching ground + snap? + bounciness using physicmaterial + relativeTime?
+    public void Jump()
     {
+        if (paused)
+        {
+            return;
+        }
+
+        AddForce(_compositeUp * _jumpVelocity, ForceMode.VelocityChange);
+        grounded = false;
+    }
+
+    protected void HoverWithForce() //FIX - Test more + touching ground + snap? + bounciness using physicmaterial + relativeTime?
+    {
+        if (paused)
+        {
+            return;
+        }
+
+        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
         Vector3 gravityDirection = gravity.normalized;
         Vector3 hoverForce = default;
 
         if (Physics.Raycast(transform.position, gravityDirection, out RaycastHit hit, float.PositiveInfinity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
             float hoverError = _footToCenterDist - hit.distance;
-            Vector3 velocityParallelToGravity = subjectiveVelocity.ComponentAlongAxis(gravityDirection);
+            Vector3 velocityParallelToGravity = (rb.velocity * relativeTime).ComponentAlongAxis(gravityDirection);
             bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
 
             if (hoverError > 0)
@@ -62,10 +79,17 @@ public class PhysicActor : PhysicObject
         AddForce(hoverForce, ForceMode.VelocityChange);
     }
 
-    public void MoveWithForce(Vector3 moveInputVector, float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to moveInputVector or add moveInputVector as force to subjectiveVelocity until max speed reached
+    protected void MoveWithForce(Vector3 moveInputVector, float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to moveInputVector or add moveInputVector as force to subjectiveVelocity until max speed reached
     {
+        if (paused)
+        {
+            return;
+        }
+
+        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
+
         Vector3 moveVector = moveInputVector.FlattenAgainstAxis(groundNormal) * moveMaxSpeed;
-        Vector3 velocityOnPlane = subjectiveVelocity.RemoveComponentAlongAxis(groundNormal);
+        Vector3 velocityOnPlane = (rb.velocity * relativeTime).RemoveComponentAlongAxis(groundNormal);
         Vector3 velocityChange = moveVector - velocityOnPlane;
         Vector3 additiveMoveVector = moveVector.ClampInDirection(velocityChange, out Vector3 _);
         Vector3 force = Vector3.Lerp(additiveMoveVector, velocityChange, control) * strength; //lerp between additive force and change force
@@ -80,28 +104,29 @@ public class PhysicActor : PhysicObject
 
         if (grounded)
         {
-            force *= subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
+            force *= (rb.velocity * relativeTime).RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
         }
 
         AddForce(force, ForceMode.VelocityChange);
     }
 
-    public void OrientWithForce(Quaternion targetRotation, float strength)
+    protected void OrientWithForce(Quaternion targetRotation, float strength)
     {
+        if (paused)
+        {
+            return;
+        }
+
+        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
+
         Quaternion deltaRotation = transform.rotation.ShortestRotation(targetRotation);
         deltaRotation.ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
-        Vector3 rotationForce = rotAxis * rotDegrees * Mathf.Deg2Rad * strength / Time.fixedDeltaTime - subjectiveAngularVelocity * _orientDamp;
+        Vector3 rotationForce = rotAxis * rotDegrees * Mathf.Deg2Rad * strength / Time.fixedDeltaTime - (rb.angularVelocity * relativeTime) * _orientDamp;
 
         AddTorque(rotationForce, ForceMode.VelocityChange);
     }
 
-    public void Jump()
-    {
-        AddForce(_compositeUp * _jumpVelocity, ForceMode.VelocityChange);
-        grounded = false;
-    }
-
-    public void CalculateCompositeUp()
+    protected void CalculateCompositeUp()
     {
         Vector3 gravityUp = -gravity.normalized;
         float t = Vector3.Angle(gravityUp, groundNormal) / 180f;
@@ -109,7 +134,7 @@ public class PhysicActor : PhysicObject
         _compositeUp = (gravityUp.normalized * (1 - t) + groundNormal * t).normalized;
     }
 
-    public void PhysicsUpdate(Vector3 moveInput, Vector3 targetForward, Transform relativeTransform)
+    protected void PhysicsUpdate(Vector3 moveInput, Vector3 targetForward, Transform relativeTransform)
     {
         MoveWithForce(moveInput, currentMoveStrength, currentMoveControl); //MoveWithForce must be before CheckGround()
         CheckGround();
@@ -120,7 +145,7 @@ public class PhysicActor : PhysicObject
         ForceUpdate();
     }
 
-    public void FixedUpdate()
+    protected virtual void FixedUpdate()
     {
         Vector2 moveInput = default;
         Transform relativeTransform = transform;
