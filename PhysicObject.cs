@@ -129,12 +129,12 @@ public class PhysicObject : MonoBehaviour
 
     public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
 
-    public void SetGrounded(bool value)
+    private void SetGrounded(bool value)
     {
         _grounded = value;
     }
- 
-    public void SetPaused(bool value)
+
+    private void SetPaused(bool value)
     {
         if (_paused && value == false)
         {
@@ -143,7 +143,7 @@ public class PhysicObject : MonoBehaviour
         _paused = value;
     }
 
-    public void SetRelativeTime(float value)
+    private void SetRelativeTime(float value)
     {
         if (_relativeTime == 0f)
         {
@@ -162,7 +162,7 @@ public class PhysicObject : MonoBehaviour
         rb.angularVelocity = _subjectiveAngularVelocity * _relativeTime * globalTime;
     }
 
-    public void CheckGround(Vector3 deltaVelocity)
+    private void CheckGround(Vector3 deltaVelocity)
     {
         if (_paused)
         {
@@ -278,7 +278,7 @@ public class PhysicObject : MonoBehaviour
         rb.angularVelocity = default;
     }
 
-    void FixedUpdate()
+    protected virtual void FixedUpdate()
     {
         CheckGround();
         ForceUpdate();
