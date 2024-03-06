@@ -26,6 +26,9 @@ public class PhysicObject : MonoBehaviour
     private bool _paused = false;
     private bool _grounded = false;
     private bool _ignoreForceUntilNextForceUpdate = false; //When assigning to velocities and _force/_torqueAccumulator, forces must be ignored until the next update so that the unpredictable order of force applications does not cause unintended behaviour
+    private List<Vector3> _currentTetherPoints = new List<Vector3>();
+    private List<float> _currentTetherMaxLengths = new List<float>();
+    private List<float> _currentTetherBounceMultipliers = new List<float>();
     protected Vector3 _groundNormal = default;
     protected PhysicMaterial _groundPhysicMaterial;
 
@@ -228,6 +231,15 @@ public class PhysicObject : MonoBehaviour
             return;
         }
 
+        for (int i = 0; i < _currentTetherPoints.Count; i++) //tether forces are applied after all other forces, and are not ignored when _ignoreForceUntilNextUpdate was set to true
+        {
+            ApplyTether(_currentTetherPoints[i], _currentTetherMaxLengths[i], _currentTetherBounceMultipliers[i]);
+        }
+
+        _currentTetherPoints = new List<Vector3>();
+        _currentTetherMaxLengths = new List<float>();
+        _currentTetherBounceMultipliers = new List<float>();
+
         if (isKinematic) //force and torque are not applied, velocity and angularVelocity do not need to be reset, _subjectiveVelocity and _subjectiveAngularVelocity are reset
         {
             _forceAccumulator = default;
@@ -261,6 +273,13 @@ public class PhysicObject : MonoBehaviour
     }
 
     public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f)
+    {
+        _currentTetherPoints.Add(tetherPoint);
+        _currentTetherMaxLengths.Add(tetherMaxLength);
+        _currentTetherBounceMultipliers.Add(bounceMultiplier);
+    }
+
+    public void ApplyTether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f)
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
