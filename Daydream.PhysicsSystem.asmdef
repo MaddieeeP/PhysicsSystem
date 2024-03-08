@@ -1,5 +1,5 @@
 {
-    "name": "PhysicsSystem",
+    "name": "Daydream.PhysicsSystem",
     "rootNamespace": "",
     "references": [
         "GUID:bf12cc0aae96ce648ab419c66c4cca20",
