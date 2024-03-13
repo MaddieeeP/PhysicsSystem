@@ -39,6 +39,8 @@ public class PhysicActor : PhysicObject
     public float currentOrientStrength { get { return grounded ? _orientStrengthGrounded : _orientStrengthAerial; } }
     public float currentMoveControl { get { return grounded ? _moveControlGrounded : _moveControlAerial; } }
     public float currentMoveStrength { get { return grounded ? _moveStrengthGrounded : _moveStrengthAerial; } }
+    public Vector3 targetMove { get { return _targetMove; } }
+    public Vector3 targetForward { get { return _targetForward; } }
     public Vector3 compositeUp { get { return _compositeUp.normalized; } }
 
     public void SetTargetMove(Vector3 targetMove)
