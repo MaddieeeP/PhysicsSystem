@@ -27,6 +27,7 @@ public class PhysicObject : MonoBehaviour
     private bool _grounded = false;
     private bool _ignoreForceUntilNextForceUpdate = false; //When assigning to velocities and _force/_torqueAccumulator, forces must be ignored until the next update so that the unpredictable order of force applications does not cause unintended behaviour
     private List<Vector3> _currentTetherPoints = new List<Vector3>();
+    private List<Vector3> _currentTetherOffsets = new List<Vector3>();
     private List<float> _currentTetherMaxLengths = new List<float>();
     private List<float> _currentTetherBounceMultipliers = new List<float>();
     protected Vector3 _groundNormal = default;
@@ -233,10 +234,11 @@ public class PhysicObject : MonoBehaviour
 
         for (int i = 0; i < _currentTetherPoints.Count; i++) //tether forces are applied after all other forces, and are not ignored when _ignoreForceUntilNextUpdate was set to true
         {
-            ApplyTether(_currentTetherPoints[i], _currentTetherMaxLengths[i], _currentTetherBounceMultipliers[i]);
+            ApplyTether(_currentTetherPoints[i], _currentTetherOffsets[i], _currentTetherMaxLengths[i], _currentTetherBounceMultipliers[i]);
         }
 
         _currentTetherPoints = new List<Vector3>();
+        _currentTetherOffsets = new List<Vector3>();
         _currentTetherMaxLengths = new List<float>();
         _currentTetherBounceMultipliers = new List<float>();
 
@@ -272,30 +274,33 @@ public class PhysicObject : MonoBehaviour
         rb.angularVelocity = _subjectiveAngularVelocity * _relativeTime * globalTime;
     }
 
-    public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f)
+    public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f, Vector3 tetherOffset = default)
     {
         _currentTetherPoints.Add(tetherPoint);
+        _currentTetherOffsets.Add(tetherOffset);
         _currentTetherMaxLengths.Add(tetherMaxLength);
         _currentTetherBounceMultipliers.Add(bounceMultiplier);
     }
 
-    public void ApplyTether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f)
+    public void ApplyTether(Vector3 tetherPoint, Vector3 tetherOffset, float tetherMaxLength, float bounceMultiplier = 0f)
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
-        if (Vector3.Distance(transform.position, tetherPoint) < tetherMaxLength)
+        Vector3 tetheredPosition = transform.position + transform.rotation * tetherOffset;
+
+        if (Vector3.Distance(tetheredPosition, tetherPoint) < tetherMaxLength)
         {
             return;
         }
 
-        Vector3 direction = (transform.position - tetherPoint).normalized;
+        Vector3 direction = (tetheredPosition - tetherPoint).normalized;
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            AddForce(rb.velocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), ForceMode.VelocityChange);
+            AddForceAtPosition(rb.velocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), tetheredPosition, ForceMode.VelocityChange);
         }
 
-        transform.position = tetherPoint + direction * tetherMaxLength;
+        transform.position = tetherPoint + direction * tetherMaxLength - transform.rotation * tetherOffset;
     }
 
     public void Halt() => SetVelocity(default, default);

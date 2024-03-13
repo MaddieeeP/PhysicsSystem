@@ -28,7 +28,9 @@ public class PhysicActor : PhysicObject
     [Space]
     [SerializeField] protected AnimationCurve _groundAngleInfluence;
 
-    protected Vector3 _compositeUp = default;
+    private Vector3 _targetMove = default;
+    private Vector3 _targetForward = default;
+    private Vector3 _compositeUp = default;
 
     //getters and setters
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
@@ -38,6 +40,16 @@ public class PhysicActor : PhysicObject
     public float currentMoveControl { get { return grounded ? _moveControlGrounded : _moveControlAerial; } }
     public float currentMoveStrength { get { return grounded ? _moveStrengthGrounded : _moveStrengthAerial; } }
     public Vector3 compositeUp { get { return _compositeUp.normalized; } }
+
+    public void SetTargetMove(Vector3 targetMove)
+    {
+        _targetMove = Vector3.ClampMagnitude(targetMove, 1f);
+    }
+
+    public void SetTargetForward(Vector3 targetForward)
+    {
+        _targetForward = targetForward;
+    }
 
     public void Jump()
     {
@@ -73,13 +85,14 @@ public class PhysicActor : PhysicObject
             }
             else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap) //FIX
             {
-                hoverForce = default; // (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
+                hoverForce = default;
+                //hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
             }
         }
         AddForce(hoverForce, ForceMode.VelocityChange);
     }
 
-    protected void MoveWithForce(Vector3 moveInputVector, float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to moveInputVector or add moveInputVector as force to subjectiveVelocity until max speed reached
+    protected void MoveWithForce(float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to _targetMove * _moveMaxSpeed or add _targetMove as force to subjectiveVelocity until max speed reached
     {
         if (paused)
         {
@@ -88,7 +101,7 @@ public class PhysicActor : PhysicObject
 
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
-        Vector3 moveVector = moveInputVector.FlattenAgainstAxis(groundNormal) * moveMaxSpeed;
+        Vector3 moveVector = _targetMove.FlattenAgainstAxis(gravity).FlattenAgainstAxis(groundNormal) * _moveMaxSpeed; //moveVector is flattened twice so that the movement is predictable in edge cases
         Vector3 velocityOnPlane = (rb.velocity * relativeTime).RemoveComponentAlongAxis(groundNormal);
         Vector3 velocityChange = moveVector - velocityOnPlane;
         Vector3 additiveMoveVector = moveVector.ClampInDirection(velocityChange, out Vector3 _);
@@ -134,21 +147,21 @@ public class PhysicActor : PhysicObject
         _compositeUp = (gravityUp.normalized * (1 - t) + groundNormal * t).normalized;
     }
 
-    protected void PhysicsUpdate(Vector3 moveInput, Vector3 targetForward, Transform relativeTransform)
+    protected void PhysicsUpdate()
     {
-        MoveWithForce(moveInput, currentMoveStrength, currentMoveControl); //MoveWithForce must be before CheckGround()
+        Vector3 lookForward = _targetForward == default ? transform.forward : _targetForward;
+        
+        MoveWithForce(currentMoveStrength, currentMoveControl); //MoveWithForce must be before CheckGround()
         CheckGround();
         CalculateCompositeUp();
 
-        OrientWithForce(Quaternion.LookRotation(targetForward.RemoveComponentAlongAxis(_compositeUp), _compositeUp), currentOrientStrength);
-        HoverWithForce();
+        OrientWithForce(Quaternion.LookRotation(lookForward.RemoveComponentAlongAxis(_compositeUp), _compositeUp), currentOrientStrength);
+        HoverWithForce(); //HoverWithForce must be after CheckGround()
         ForceUpdate();
     }
 
     protected virtual void FixedUpdate()
     {
-        Vector2 moveInput = default;
-        Transform relativeTransform = transform;
-        PhysicsUpdate(relativeTransform.rotation * new Vector3(moveInput.x, 0f, moveInput.y), relativeTransform.forward, relativeTransform);
+        PhysicsUpdate();
     }
 }
