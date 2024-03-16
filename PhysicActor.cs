@@ -50,7 +50,13 @@ public class PhysicActor : PhysicObject
 
     public void SetTargetForward(Vector3 targetForward)
     {
-        _targetForward = targetForward;
+        if (targetForward == Vector3.zero)
+        {
+            _targetForward = transform.forward;
+            return;
+        }
+
+        _targetForward = targetForward.normalized;
     }
 
     public void Jump()
