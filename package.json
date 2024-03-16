@@ -2,7 +2,7 @@
   "name": "com.daydream.physicssystem",
   "version": "0.0.0",
   "displayName": "Physics System",
-  "description": "Systems designed to simplify realistic physics interactions",
+  "description": "Systems built to complement the standard Unity physics system.",
   "rootnamespace": "daydream",
   "dependencies": {
     "com.unity.splines": "2.0.0",
