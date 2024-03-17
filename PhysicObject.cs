@@ -261,8 +261,8 @@ public class PhysicObject : MonoBehaviour
         }
 
         //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
-        _subjectiveVelocity = Vector3.ClampMagnitude((rb.velocity + _forceAccumulator) / relativeTime, velocityCap);
-        _subjectiveAngularVelocity = Vector3.ClampMagnitude((rb.angularVelocity + _torqueAccumulator) / relativeTime, angularVelocityCap);
+        _subjectiveVelocity = Vector3.ClampMagnitude((rb.velocity + _forceAccumulator) / relativeTime / globalTime, velocityCap);
+        _subjectiveAngularVelocity = Vector3.ClampMagnitude((rb.angularVelocity + _torqueAccumulator) / relativeTime / globalTime, angularVelocityCap);
         
         _forceAccumulator = default;
         _torqueAccumulator = default;
