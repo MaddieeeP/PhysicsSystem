@@ -84,7 +84,7 @@ public class PhysicActor : PhysicObject
         if (Physics.Raycast(transform.position, gravityDirection, out RaycastHit hit, float.PositiveInfinity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
         {
             float hoverError = _footToCenterDist - hit.distance;
-            Vector3 velocityParallelToGravity = (rb.velocity * relativeTime).ComponentAlongAxis(gravityDirection);
+            Vector3 velocityParallelToGravity = subjectiveVelocity.ComponentAlongAxis(gravityDirection);
             bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
 
             if (hoverError > 0)
@@ -109,8 +109,11 @@ public class PhysicActor : PhysicObject
 
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
+        float simMoveMaxAcceleration = moveMaxAcceleration * relativeTime * globalTime;
+        float simMoveMaxDeceleration = moveMaxDeceleration * relativeTime * globalTime;
+
         Vector3 moveVector = _targetMove.FlattenAgainstAxis(gravity).FlattenAgainstAxis(groundNormal) * _moveMaxSpeed; //moveVector is flattened twice so that the movement is predictable in edge cases
-        Vector3 velocityOnPlane = (rb.velocity * relativeTime).RemoveComponentAlongAxis(groundNormal);
+        Vector3 velocityOnPlane = subjectiveVelocity.RemoveComponentAlongAxis(groundNormal);
         Vector3 velocityChange = moveVector - velocityOnPlane;
         Vector3 additiveMoveVector = moveVector.ClampInDirection(velocityChange, out Vector3 _);
         Vector3 force = Vector3.Lerp(additiveMoveVector, velocityChange, control) * strength; //lerp between additive force and change force
@@ -119,13 +122,13 @@ public class PhysicActor : PhysicObject
         Vector3 forcePerpendicular = force - forceParallel;
         Vector3 velocityParallel = velocityOnPlane.ComponentAlongAxis(forceParallel);
 
-        forceParallel = forceParallel.ClampRelativeChange(velocityParallel, moveMaxAcceleration, moveMaxDeceleration, out _);
-        forcePerpendicular = Vector3.ClampMagnitude(forcePerpendicular, moveMaxDeceleration - forceParallel.magnitude); //perpendicular force will always be zero or a deceleration; total force magnitude will never exceed moveMaxDeceleration
+        forceParallel = forceParallel.ClampRelativeChange(velocityParallel, simMoveMaxAcceleration, simMoveMaxDeceleration, out _);
+        forcePerpendicular = Vector3.ClampMagnitude(forcePerpendicular, simMoveMaxDeceleration - forceParallel.magnitude); //perpendicular force will always be zero or a deceleration; total force magnitude will never exceed moveMaxDeceleration
         force = forceParallel + forcePerpendicular;
 
         if (grounded)
         {
-            force *= (rb.velocity * relativeTime).RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
+            force *= subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
         }
 
         AddForce(force, ForceMode.VelocityChange);
@@ -142,7 +145,7 @@ public class PhysicActor : PhysicObject
 
         Quaternion deltaRotation = transform.rotation.ShortestRotation(targetRotation);
         deltaRotation.ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
-        Vector3 rotationForce = rotAxis * rotDegrees * Mathf.Deg2Rad * strength / Time.fixedDeltaTime - (rb.angularVelocity * relativeTime) * _orientDamp;
+        Vector3 rotationForce = rotAxis * rotDegrees * Mathf.Deg2Rad * strength * relativeTime * globalTime - rb.angularVelocity * _orientDamp;
 
         AddTorque(rotationForce, ForceMode.VelocityChange);
     }

@@ -37,17 +37,20 @@ public class PhysicObject : MonoBehaviour
     private Vector3 _subjectiveAngularVelocity = default;
     private Vector3 _forceAccumulator = default;
     private Vector3 _torqueAccumulator = default;
-    private float _prevGlobalTime = 1f; //Used to detect when globalTime is changed from 0f to restart motion 
+    private float _prevGlobalTime = 1f; //Used to track globalTime in the last simulation step
+    private float _prevRelativeTime = 1f; //Used to track _relativeTime in the last simulation step
 
     //getters and setters
-    public float relativeTime { get { return _relativeTime; } set { SetRelativeTime(value); } }
+    public float relativeTime { get { return _relativeTime; } set { _relativeTime = value; } }
+    public float experiencedDeltaTime { get { return Time.deltaTime * _relativeTime * globalTime; } }
+    public float experiencedFixedDeltaTime { get { return Time.fixedDeltaTime * _relativeTime * globalTime; } }
     public bool paused { get { return _paused; } set { SetPaused(value); } }
-    public bool isKinematic { get { return gameObject.GetComponent<Rigidbody>().isKinematic; } set { SetKinematic(value); } }
-    public bool grounded { get { return _grounded; } set { SetGrounded(value); } }
+    public bool isKinematic { get { return gameObject.GetComponent<Rigidbody>().isKinematic; } set { gameObject.GetComponent<Rigidbody>().isKinematic = value; } }
+    public bool grounded { get { return _grounded; } set { _grounded = value; } }
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
     public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } } //Although accessing RigidBody.velocity is usually preferred, it lags behind _subjectiveVelocity which may make it unreliable in calculations
-    public Vector3 subjectiveAngularVelociy { get { return _subjectiveAngularVelocity; } } //Although accessing RigidBody.angularVelocity is usually preferred, it lags behind _subjectiveAngularVelocity which may make it unreliable in calculations
+    public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } } //Although accessing RigidBody.angularVelocity is usually preferred, it lags behind _subjectiveAngularVelocity which may make it unreliable in calculations
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
@@ -71,10 +74,10 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedForce = force * Time.fixedDeltaTime / rb.mass;
+                interpretedForce = force * experiencedFixedDeltaTime / rb.mass;
                 break;
             case ForceMode.Acceleration:
-                interpretedForce = force * Time.fixedDeltaTime;
+                interpretedForce = force * experiencedFixedDeltaTime;
                 break;
             case ForceMode.Impulse:
                 interpretedForce = force / rb.mass;
@@ -100,10 +103,10 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedTorque = torque * Time.fixedDeltaTime / rb.mass;
+                interpretedTorque = torque * experiencedFixedDeltaTime / rb.mass;
                 break;
             case ForceMode.Acceleration:
-                interpretedTorque = torque * Time.fixedDeltaTime;
+                interpretedTorque = torque * experiencedFixedDeltaTime;
                 break;
             case ForceMode.Impulse:
                 interpretedTorque = torque / rb.mass;
@@ -137,11 +140,6 @@ public class PhysicObject : MonoBehaviour
 
     public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
 
-    private void SetGrounded(bool value)
-    {
-        _grounded = value;
-    }
-
     private void SetPaused(bool value)
     {
         if (_paused && value == false)
@@ -151,28 +149,12 @@ public class PhysicObject : MonoBehaviour
         _paused = value;
     }
 
-    private void SetRelativeTime(float value)
-    {
-        if (_relativeTime == 0f)
-        {
-            _relativeTime = value;
-            RefreshVelocities();
-            return;
-        }
-        _relativeTime = value;
-    }
-
-    private void SetKinematic(bool value)
-    {
-        gameObject.GetComponent<Rigidbody>().isKinematic = value;
-    }
-
     public void RefreshVelocities()
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
-        rb.velocity = _subjectiveVelocity * _relativeTime * globalTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * _relativeTime * globalTime;
+        rb.velocity = _subjectiveVelocity * _prevRelativeTime * _prevGlobalTime;
+        rb.angularVelocity = _subjectiveAngularVelocity * _prevRelativeTime * _prevGlobalTime;
     }
 
     private void CheckGround(Vector3 deltaVelocity)
@@ -206,12 +188,10 @@ public class PhysicObject : MonoBehaviour
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
-        if (_prevGlobalTime == 0f && globalTime != _prevGlobalTime)
+        if (globalTime != _prevGlobalTime || _relativeTime != _prevRelativeTime)
         {
             RefreshVelocities(); //rigidbody velocity and angularVelocity must be recalculated before _subjectiveVelocity and _subjectiveAngularVelocity
         }
-
-        _prevGlobalTime = globalTime;
 
         if (_usePrevGravityIn0g && _gravityBuffer == default)
         {
@@ -225,8 +205,10 @@ public class PhysicObject : MonoBehaviour
 
         _ignoreForceUntilNextForceUpdate = false;
 
-        if (_paused) //_forceAccumulator and _torqueAccumulator are not reset so they will stack over time, velocity and angularVelocity will return after unpausing
+        if (_paused) //_subjectiveVelocity and _subjectiveAngularVelocity are not reset
         {
+            _forceAccumulator = default;
+            _torqueAccumulator = default;
             rb.velocity = default;
             rb.angularVelocity = default;
             return;
@@ -257,15 +239,19 @@ public class PhysicObject : MonoBehaviour
             _torqueAccumulator = default;
             rb.velocity = default;
             rb.angularVelocity = default;
+            _prevGlobalTime = globalTime;
+            _prevRelativeTime = _relativeTime;
             return;
         }
 
         //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
-        _subjectiveVelocity = Vector3.ClampMagnitude((rb.velocity + _forceAccumulator) / relativeTime / globalTime, velocityCap);
-        _subjectiveAngularVelocity = Vector3.ClampMagnitude((rb.angularVelocity + _torqueAccumulator) / relativeTime / globalTime, angularVelocityCap);
+        _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
+        _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
         
         _forceAccumulator = default;
         _torqueAccumulator = default;
+        _prevGlobalTime = globalTime;
+        _prevRelativeTime = _relativeTime;
 
         //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
         //This is the only place where forces should be applied to ensure they are accurate, unless _ignoreForceUntilNextForceUpdate
