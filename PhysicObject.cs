@@ -39,18 +39,20 @@ public class PhysicObject : MonoBehaviour
     private Vector3 _torqueAccumulator = default;
     private float _prevGlobalTime = 1f; //Used to track globalTime in the last simulation step
     private float _prevRelativeTime = 1f; //Used to track _relativeTime in the last simulation step
+    private bool _prevPaused = false; //Used to track _paused in the last FixedUpdate()
 
     //getters and setters
     public float relativeTime { get { return _relativeTime; } set { _relativeTime = value; } }
+    public float experiencedTime { get { return globalTime * _relativeTime; } }
     public float experiencedDeltaTime { get { return Time.deltaTime * _relativeTime * globalTime; } }
     public float experiencedFixedDeltaTime { get { return Time.fixedDeltaTime * _relativeTime * globalTime; } }
-    public bool paused { get { return _paused; } set { SetPaused(value); } }
+    public bool paused { get { return _paused; } set { _paused = value; } }
     public bool isKinematic { get { return gameObject.GetComponent<Rigidbody>().isKinematic; } set { gameObject.GetComponent<Rigidbody>().isKinematic = value; } }
     public bool grounded { get { return _grounded; } set { _grounded = value; } }
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 groundNormal { get { return _groundNormal; } }
-    public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } } //Although accessing RigidBody.velocity is usually preferred, it lags behind _subjectiveVelocity which may make it unreliable in calculations
-    public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } } //Although accessing RigidBody.angularVelocity is usually preferred, it lags behind _subjectiveAngularVelocity which may make it unreliable in calculations
+    public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } } //Although accessing RigidBody.velocity is usually preferred, it lags behind _subjectiveVelocity which may make it unreliable in calculations, but it will not update when the object is frozen
+    public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } } //Although accessing RigidBody.angularVelocity is usually preferred, it lags behind _subjectiveAngularVelocity which may make it unreliable in calculations, but it will not update when the object is frozen
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
@@ -140,23 +142,6 @@ public class PhysicObject : MonoBehaviour
 
     public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
 
-    private void SetPaused(bool value)
-    {
-        if (_paused && value == false)
-        {
-            RefreshVelocities();
-        }
-        _paused = value;
-    }
-
-    public void RefreshVelocities()
-    {
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        rb.velocity = _subjectiveVelocity * _prevRelativeTime * _prevGlobalTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * _prevRelativeTime * _prevGlobalTime;
-    }
-
     private void CheckGround(Vector3 deltaVelocity)
     {
         if (_paused)
@@ -188,31 +173,17 @@ public class PhysicObject : MonoBehaviour
     {
         Rigidbody rb = gameObject.GetComponent<Rigidbody>();
 
-        if (globalTime != _prevGlobalTime || _relativeTime != _prevRelativeTime)
-        {
-            RefreshVelocities(); //rigidbody velocity and angularVelocity must be recalculated before _subjectiveVelocity and _subjectiveAngularVelocity
-        }
-
         if (_usePrevGravityIn0g && _gravityBuffer == default)
         {
             AddForce(_gravity, ForceMode.Acceleration, true); //_gravity is not updated
-        } else
+        }
+        else
         {
             _gravity = _gravityBuffer;
         }
 
-        _gravityBuffer = default; //_gravityBuffer is added to by ForceField objects between FixedUpdate calls
-
+        _gravityBuffer = default;
         _ignoreForceUntilNextForceUpdate = false;
-
-        if (_paused) //_subjectiveVelocity and _subjectiveAngularVelocity are not reset
-        {
-            _forceAccumulator = default;
-            _torqueAccumulator = default;
-            rb.velocity = default;
-            rb.angularVelocity = default;
-            return;
-        }
 
         for (int i = 0; i < _currentTetherPoints.Count; i++) //tether forces are applied after all other forces, and are not ignored when _ignoreForceUntilNextUpdate was set to true
         {
@@ -224,40 +195,42 @@ public class PhysicObject : MonoBehaviour
         _currentTetherMaxLengths = new List<float>();
         _currentTetherBounceMultipliers = new List<float>();
 
-        if (isKinematic) //force and torque are not applied, velocity and angularVelocity do not need to be reset, _subjectiveVelocity and _subjectiveAngularVelocity are reset
+        if (isKinematic || _paused || experiencedTime == 0f)
         {
-            _forceAccumulator = default;
-            _torqueAccumulator = default;
-            _subjectiveVelocity = default;
-            _subjectiveAngularVelocity = default;
-            return;
-        }
-        
-        if (globalTime * _relativeTime == 0f) //force and torque are not applied, _subjectiveVelocity and _subjectiveAngularVelocity are not reset
-        {
-            _forceAccumulator = default;
-            _torqueAccumulator = default;
             rb.velocity = default;
             rb.angularVelocity = default;
+
+            _forceAccumulator = default;
+            _torqueAccumulator = default;
+            _prevPaused = _paused;
             _prevGlobalTime = globalTime;
             _prevRelativeTime = _relativeTime;
             return;
         }
 
-        //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
-        _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
-        _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
-        
-        _forceAccumulator = default;
-        _torqueAccumulator = default;
-        _prevGlobalTime = globalTime;
-        _prevRelativeTime = _relativeTime;
+        if (globalTime != _prevGlobalTime || _relativeTime != _prevRelativeTime || _paused != _prevPaused)
+        {
+            rb.velocity = _subjectiveVelocity * _prevRelativeTime * _prevGlobalTime;
+            rb.angularVelocity = _subjectiveAngularVelocity * _prevRelativeTime * _prevGlobalTime;
+        }
+
+        if (_prevRelativeTime * _prevGlobalTime != 0f)
+        {
+            //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
+            _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
+            _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
+        }
 
         //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
         //This is the only place where forces should be applied to ensure they are accurate, unless _ignoreForceUntilNextForceUpdate
+        rb.velocity = _subjectiveVelocity * experiencedTime;
+        rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
 
-        rb.velocity = _subjectiveVelocity * _relativeTime * globalTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * _relativeTime * globalTime;
+        _forceAccumulator = default;
+        _torqueAccumulator = default;
+        _prevPaused = _paused;
+        _prevGlobalTime = globalTime;
+        _prevRelativeTime = _relativeTime;
     }
 
     public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f, Vector3 tetherOffset = default)
@@ -297,8 +270,8 @@ public class PhysicObject : MonoBehaviour
 
         _subjectiveVelocity = newSubjectiveVelocity;
         _subjectiveAngularVelocity = newSubjectiveAngularVelocity;
-        rb.velocity = _subjectiveVelocity * _relativeTime * globalTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * _relativeTime * globalTime;
+        rb.velocity = _subjectiveVelocity * experiencedTime;
+        rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
 
         _ignoreForceUntilNextForceUpdate = true;
     }
