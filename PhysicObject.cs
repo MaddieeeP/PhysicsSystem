@@ -76,10 +76,10 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedForce = force * experiencedFixedDeltaTime / rb.mass;
+                interpretedForce = force * experiencedFixedDeltaTime / rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
-                interpretedForce = force * experiencedFixedDeltaTime;
+                interpretedForce = force * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
                 interpretedForce = force / rb.mass;
@@ -105,10 +105,10 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedTorque = torque * experiencedFixedDeltaTime / rb.mass;
+                interpretedTorque = torque * experiencedFixedDeltaTime / rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
-                interpretedTorque = torque * experiencedFixedDeltaTime;
+                interpretedTorque = torque * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
                 interpretedTorque = torque / rb.mass;
@@ -130,8 +130,21 @@ public class PhysicObject : MonoBehaviour
 
         Vector3 lever = position - transform.TransformPoint(gameObject.GetComponent<Rigidbody>().centerOfMass);
         Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
-
+        
         AddForce(force, forceMode);
+        AddTorque(torque, forceMode);
+    }
+
+    public void AddTorqueWithForce(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
+    {
+        if (isKinematic || !receiveForce || _ignoreForceUntilNextForceUpdate || (_paused && !receiveNonGravityForceWhenPaused))
+        {
+            return;
+        }
+
+        Vector3 lever = position - transform.TransformPoint(gameObject.GetComponent<Rigidbody>().centerOfMass);
+        Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
+
         AddTorque(torque, forceMode);
     }
 
@@ -195,7 +208,18 @@ public class PhysicObject : MonoBehaviour
         _currentTetherMaxLengths = new List<float>();
         _currentTetherBounceMultipliers = new List<float>();
 
-        if (isKinematic || _paused || experiencedTime == 0f)
+        if (experiencedTime == 0f) //_prevGlobalTime, _prevRelativeTime, _subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
+        {
+            rb.velocity = default;
+            rb.angularVelocity = default;
+
+            _forceAccumulator = default;
+            _torqueAccumulator = default;
+            _prevPaused = _paused;
+            return;
+        }
+
+        if (isKinematic || _paused) //_subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
         {
             rb.velocity = default;
             rb.angularVelocity = default;
@@ -208,18 +232,16 @@ public class PhysicObject : MonoBehaviour
             return;
         }
 
-        if (globalTime != _prevGlobalTime || _relativeTime != _prevRelativeTime || _paused != _prevPaused)
+        if (_prevGlobalTime * _prevRelativeTime == 0f || _prevPaused)
         {
+            //reset velocity and angularVelocity so they can be used in calculations - this step should be avoided when possible as there is no normal contact force
             rb.velocity = _subjectiveVelocity * _prevRelativeTime * _prevGlobalTime;
             rb.angularVelocity = _subjectiveAngularVelocity * _prevRelativeTime * _prevGlobalTime;
         }
 
-        if (_prevRelativeTime * _prevGlobalTime != 0f)
-        {
-            //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
-            _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
-            _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
-        }
+        //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
+        _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
+        _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
 
         //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
         //This is the only place where forces should be applied to ensure they are accurate, unless _ignoreForceUntilNextForceUpdate
@@ -256,7 +278,9 @@ public class PhysicObject : MonoBehaviour
 
         if (rb.velocity.IsComponentInDirectionPositive(direction))
         {
-            AddForceAtPosition(rb.velocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), tetheredPosition, ForceMode.VelocityChange);
+            rb.velocity = rb.velocity.RemoveComponentAlongAxis(direction);
+            _forceAccumulator = _forceAccumulator.IsComponentInDirectionPositive(direction) ? _forceAccumulator - _forceAccumulator.ComponentAlongAxis(direction) * (1 + Math.Abs(bounceMultiplier)) : _forceAccumulator;
+            AddTorqueWithForce(_subjectiveVelocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), tetheredPosition, ForceMode.VelocityChange);
         }
 
         transform.position = tetherPoint + direction * tetherMaxLength - transform.rotation * tetherOffset;
@@ -272,6 +296,8 @@ public class PhysicObject : MonoBehaviour
         _subjectiveAngularVelocity = newSubjectiveAngularVelocity;
         rb.velocity = _subjectiveVelocity * experiencedTime;
         rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
+        _prevGlobalTime = globalTime;
+        _prevRelativeTime = _relativeTime;
 
         _ignoreForceUntilNextForceUpdate = true;
     }
