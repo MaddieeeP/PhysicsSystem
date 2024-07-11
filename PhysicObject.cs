@@ -1,8 +1,3 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -13,76 +8,99 @@ public class PhysicObject : MonoBehaviour
 {
     private const float velocityCap = 100f;
     private const float angularVelocityCap = 100f;
-    public static float globalTime = 1f; //Use for slowdown and speed up effect
+    public static float globalTime = 1f; //Use for slowdown and speed up effect and pausing, should not be updated in FixedUpdate()
 
-    [SerializeField] private float _relativeTime = 1f; //Objects can experience the passage of time differently - this may have unexpected effects on acceleration if they interact
-    [SerializeField] protected bool receiveForce = true; //If false, the object will continue to move and rotate but forces will not affect its motion (gravity will still be updated for orientation and collisions will still be processed as per usual)
-    [SerializeField] protected bool receiveGravityForceWhenPaused = false;
-    [SerializeField] protected bool receiveNonGravityForceWhenPaused = false;
-    [SerializeField] protected float _footToCenterDist = 1.2f; //Value should be slightly above the distance from the bottom of the collider and the transform position
     [SerializeField] protected bool _usePrevGravityIn0g = true; //If true and _gravityBuffer == Vector3.zero, _gravity will not be overwritten and will be applied as gravity force in ForceUpdate()
-    [SerializeField] protected Vector3 _gravity = new Vector3(0f, 9.81f, 0f); //If _usePrevGravityIn0g and _gravityBuffer == Vector3.zero, value will be defaulted to (not recommended)
+
+    private Rigidbody _rb;
+
+    private float _relativeTime = 1f; //Objects can experience the passage of time differently - this may have unexpected effects on acceleration if they interact, should not be updated in FixedUpdate()
     private Vector3 _gravityBuffer = default;
-    private bool _paused = false;
-    private bool _grounded = false;
-    private bool _ignoreForceUntilNextForceUpdate = false; //When assigning to velocities and _force/_torqueAccumulator, forces must be ignored until the next update so that the unpredictable order of force applications does not cause unintended behaviour
-    private List<Vector3> _currentTetherPoints = new List<Vector3>();
-    private List<Vector3> _currentTetherOffsets = new List<Vector3>();
-    private List<float> _currentTetherMaxLengths = new List<float>();
-    private List<float> _currentTetherBounceMultipliers = new List<float>();
-    protected Vector3 _groundNormal = default;
-    protected PhysicMaterial _groundPhysicMaterial;
+    private Vector3 _gravity = new(0f, -10f, 0f); //If _usePrevGravityIn0g and _gravityBuffer == Vector3.zero, value will be defaulted to (not recommended)
+    private Vector3 _normalForce = default;
+
+    private bool _ignoreForceUntilNextForceUpdate = false; //When assigning to velocities and _forceAccumulator, forces must be ignored until the next update so that the unpredictable order of force applications does not cause unintended behaviour
+    private bool _ignoreTorqueUntilNextForceUpdate = false; //When assigning to angular velocities and _torqueAccumulator, forces must be ignored until the next update so that the unpredictable order of force applications does not cause unintended behaviour
 
     private Vector3 _subjectiveVelocity = default;
     private Vector3 _subjectiveAngularVelocity = default;
     private Vector3 _forceAccumulator = default;
     private Vector3 _torqueAccumulator = default;
-    private float _prevGlobalTime = 1f; //Used to track globalTime in the last simulation step
-    private float _prevRelativeTime = 1f; //Used to track _relativeTime in the last simulation step
-    private bool _prevPaused = false; //Used to track _paused in the last FixedUpdate()
 
     //getters and setters
-    public float relativeTime { get { return _relativeTime; } set { _relativeTime = value; } }
+    public Rigidbody rb { get { return _rb; } }
+    protected Vector3 normalForce { get { return _normalForce; } }
+    public float relativeTime { get { return _relativeTime; } }
     public float experiencedTime { get { return globalTime * _relativeTime; } }
     public float experiencedDeltaTime { get { return Time.deltaTime * _relativeTime * globalTime; } }
     public float experiencedFixedDeltaTime { get { return Time.fixedDeltaTime * _relativeTime * globalTime; } }
-    public bool paused { get { return _paused; } set { _paused = value; } }
-    public bool isKinematic { get { return gameObject.GetComponent<Rigidbody>().isKinematic; } set { gameObject.GetComponent<Rigidbody>().isKinematic = value; } }
-    public bool grounded { get { return _grounded; } set { _grounded = value; } }
+    public bool isKinematic { get { return _rb.isKinematic; } }
+    
     public Vector3 gravity { get { return _gravity; } }
-    public Vector3 groundNormal { get { return _groundNormal; } }
-    public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } } //Although accessing RigidBody.velocity is usually preferred, it lags behind _subjectiveVelocity which may make it unreliable in calculations, but it will not update when the object is frozen
-    public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } } //Although accessing RigidBody.angularVelocity is usually preferred, it lags behind _subjectiveAngularVelocity which may make it unreliable in calculations, but it will not update when the object is frozen
+    public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } }
+    public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } }
+
+    public virtual Vector3 groundNormal { get { return _normalForce.normalized; } }
+
+    public void SetRigidbodyPointer()
+    {
+        _rb = GetComponent<Rigidbody>();
+    }
+
+    public virtual void SetRelativeTime(float value)
+    {
+        _relativeTime = value;
+    }
+
+    public virtual void SetIsKinematic(bool value)
+    {
+        _rb.isKinematic = value;
+    }
+
+    protected void SubscribeToLateFixedUpdate()
+    {
+        LateFixedUpdateBroadcaster.LateFixedUpdate += LateFixedUpdate;
+    }
+
+    protected void UnsubscribeFromLateFixedUpdate()
+    {
+        LateFixedUpdateBroadcaster.LateFixedUpdate -= LateFixedUpdate;
+    }
+
+    protected Vector3 GetCurrentForceAccumulator()
+    {
+        return _forceAccumulator;
+    }
+
+    protected Vector3 GetCurrentTorqueAccumulator()
+    {
+        return _torqueAccumulator;
+    }
 
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
     {
         if (isGravityForce)
         {
             _gravityBuffer += force;
-            if (_paused && !receiveGravityForceWhenPaused)
-            {
-                return;
-            }
         }
         
-        if (isKinematic || !receiveForce || _ignoreForceUntilNextForceUpdate || (_paused && !receiveNonGravityForceWhenPaused))
+        if (isKinematic || _ignoreForceUntilNextForceUpdate)
         {
             return;
         }
 
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
         Vector3 interpretedForce = default;
 
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedForce = force * experiencedFixedDeltaTime / rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedForce = force * experiencedFixedDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
                 interpretedForce = force * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
-                interpretedForce = force / rb.mass;
+                interpretedForce = force / _rb.mass;
                 break;
             case ForceMode.VelocityChange:
                 interpretedForce = force;
@@ -94,24 +112,23 @@ public class PhysicObject : MonoBehaviour
 
     public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force)
     {
-        if (isKinematic || !receiveForce || _ignoreForceUntilNextForceUpdate || (_paused && !receiveNonGravityForceWhenPaused))
+        if (isKinematic || _ignoreTorqueUntilNextForceUpdate)
         {
             return;
         }
 
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
         Vector3 interpretedTorque = default;
 
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedTorque = torque * experiencedFixedDeltaTime / rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedTorque = torque * experiencedFixedDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
                 interpretedTorque = torque * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
-                interpretedTorque = torque / rb.mass;
+                interpretedTorque = torque / _rb.mass;
                 break;
             case ForceMode.VelocityChange:
                 interpretedTorque = torque;
@@ -123,69 +140,20 @@ public class PhysicObject : MonoBehaviour
 
     public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
     {
-        if (isKinematic || !receiveForce || _ignoreForceUntilNextForceUpdate || (_paused && !receiveNonGravityForceWhenPaused))
+        if (isKinematic || (_ignoreForceUntilNextForceUpdate && _ignoreTorqueUntilNextForceUpdate))
         {
-            return;
+            return; 
         }
 
-        Vector3 lever = position - transform.TransformPoint(gameObject.GetComponent<Rigidbody>().centerOfMass);
+        Vector3 lever = position - transform.TransformPoint(_rb.centerOfMass);
         Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
         
         AddForce(force, forceMode);
         AddTorque(torque, forceMode);
     }
 
-    public void AddTorqueWithForce(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
-    {
-        if (isKinematic || !receiveForce || _ignoreForceUntilNextForceUpdate || (_paused && !receiveNonGravityForceWhenPaused))
-        {
-            return;
-        }
-
-        Vector3 lever = position - transform.TransformPoint(gameObject.GetComponent<Rigidbody>().centerOfMass);
-        Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
-
-        AddTorque(torque, forceMode);
-    }
-
-    public void StandAt(Vector3 footingPosition, Vector3 up)
-    {
-        transform.position = footingPosition + up * _footToCenterDist;
-    }
-
-    public void StandAt(Vector3 footingPosition) => StandAt(footingPosition, transform.up);
-
-    private void CheckGround(Vector3 deltaVelocity)
-    {
-        if (_paused)
-        {
-            return;
-        }
-
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        Vector3 deltaMovement = (rb.velocity + deltaVelocity) * Time.fixedDeltaTime - transform.up * _footToCenterDist;
-        if (deltaMovement.magnitude > 0f)
-        {
-            if (Physics.Raycast(transform.position, deltaMovement.normalized, out RaycastHit hit, deltaMovement.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-            {
-                _groundNormal = hit.normal;
-                _grounded = true;
-                _groundPhysicMaterial = hit.collider.material;
-                return;
-            }
-        }
-        _groundNormal = -gravity.normalized;
-        _grounded = false;
-        _groundPhysicMaterial = null;
-    }
-
-    public void CheckGround() => CheckGround(_forceAccumulator / relativeTime);
-
     public void ForceUpdate()
     {
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
         if (_usePrevGravityIn0g && _gravityBuffer == default)
         {
             AddForce(_gravity, ForceMode.Acceleration, true); //_gravity is not updated
@@ -197,114 +165,75 @@ public class PhysicObject : MonoBehaviour
 
         _gravityBuffer = default;
         _ignoreForceUntilNextForceUpdate = false;
+        _ignoreTorqueUntilNextForceUpdate = false;
 
-        for (int i = 0; i < _currentTetherPoints.Count; i++) //tether forces are applied after all other forces, and are not ignored when _ignoreForceUntilNextUpdate was set to true
+        if (globalTime == 0f || _relativeTime == 0f || _rb.isKinematic) //_subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
         {
-            ApplyTether(_currentTetherPoints[i], _currentTetherOffsets[i], _currentTetherMaxLengths[i], _currentTetherBounceMultipliers[i]);
-        }
-
-        _currentTetherPoints = new List<Vector3>();
-        _currentTetherOffsets = new List<Vector3>();
-        _currentTetherMaxLengths = new List<float>();
-        _currentTetherBounceMultipliers = new List<float>();
-
-        if (experiencedTime == 0f) //_prevGlobalTime, _prevRelativeTime, _subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
-        {
-            rb.velocity = default;
-            rb.angularVelocity = default;
+            _rb.velocity = default;
+            _rb.angularVelocity = default;
 
             _forceAccumulator = default;
             _torqueAccumulator = default;
-            _prevPaused = _paused;
+            
+            _normalForce = default;
             return;
         }
 
-        if (isKinematic || _paused) //_subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
-        {
-            rb.velocity = default;
-            rb.angularVelocity = default;
+        SetVelocity(_subjectiveVelocity + _forceAccumulator, false);
+        SetAngularVelocity(_subjectiveAngularVelocity + _torqueAccumulator, false);
+    }
 
-            _forceAccumulator = default;
-            _torqueAccumulator = default;
-            _prevPaused = _paused;
-            _prevGlobalTime = globalTime;
-            _prevRelativeTime = _relativeTime;
+    public void BuiltInForceCorrection()
+    {
+        if (globalTime == 0f || _relativeTime == 0f || _rb.isKinematic) //_subjectiveVelocity and _subjectiveAngularVelocity are not updated so that their values can be retrieved later
+        {
             return;
         }
 
-        if (_prevGlobalTime * _prevRelativeTime == 0f || _prevPaused)
-        {
-            //reset velocity and angularVelocity so they can be used in calculations - this step should be avoided when possible as there is no normal contact force
-            rb.velocity = _subjectiveVelocity * _prevRelativeTime * _prevGlobalTime;
-            rb.angularVelocity = _subjectiveAngularVelocity * _prevRelativeTime * _prevGlobalTime;
-        }
+        _subjectiveVelocity = _rb.velocity / _relativeTime / globalTime;
+        _subjectiveAngularVelocity = _rb.angularVelocity / _relativeTime / globalTime;
+    }
 
-        //_subjectiveVelocity and _subjectiveAngularVelocity are reset to account for collisions as there is no normal contact force
-        _subjectiveVelocity = Vector3.ClampMagnitude(rb.velocity / _prevRelativeTime / _prevGlobalTime + _forceAccumulator, velocityCap);
-        _subjectiveAngularVelocity = Vector3.ClampMagnitude(rb.angularVelocity / _prevRelativeTime / _prevGlobalTime + _torqueAccumulator, angularVelocityCap);
-
-        //GroundedCheck and other code may rely on _forceAccumulator and _torqueAccumulator being representative of all, or all except certain forces/torque being applied
-        //This is the only place where forces should be applied to ensure they are accurate, unless _ignoreForceUntilNextForceUpdate
-        rb.velocity = _subjectiveVelocity * experiencedTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
+    public void SetVelocity(Vector3 newSubjectiveVelocity, bool ignoreForceUntilNextForceUpdate = true)
+    {
+        _subjectiveVelocity = Vector3.ClampMagnitude(newSubjectiveVelocity, velocityCap);
+        _rb.velocity = _subjectiveVelocity * experiencedTime;
 
         _forceAccumulator = default;
+
+        _ignoreForceUntilNextForceUpdate = ignoreForceUntilNextForceUpdate;
+    }
+
+    public void SetAngularVelocity(Vector3 newSubjectiveAngularVelocity, bool ignoreTorqueUntilNextForceUpdate = true)
+    {
+        _subjectiveAngularVelocity = Vector3.ClampMagnitude(newSubjectiveAngularVelocity, angularVelocityCap);
+        _rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
+
         _torqueAccumulator = default;
-        _prevPaused = _paused;
-        _prevGlobalTime = globalTime;
-        _prevRelativeTime = _relativeTime;
+
+        _ignoreTorqueUntilNextForceUpdate = ignoreTorqueUntilNextForceUpdate;
     }
 
-    public void Tether(Vector3 tetherPoint, float tetherMaxLength, float bounceMultiplier = 0f, Vector3 tetherOffset = default)
+    public virtual void OnEnable()
     {
-        _currentTetherPoints.Add(tetherPoint);
-        _currentTetherOffsets.Add(tetherOffset);
-        _currentTetherMaxLengths.Add(tetherMaxLength);
-        _currentTetherBounceMultipliers.Add(bounceMultiplier);
+        SetRigidbodyPointer();
+        SubscribeToLateFixedUpdate();
     }
 
-    public void ApplyTether(Vector3 tetherPoint, Vector3 tetherOffset, float tetherMaxLength, float bounceMultiplier = 0f)
+    public virtual void OnDisable()
     {
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        Vector3 tetheredPosition = transform.position + transform.rotation * tetherOffset;
-
-        if (Vector3.Distance(tetheredPosition, tetherPoint) < tetherMaxLength)
-        {
-            return;
-        }
-
-        Vector3 direction = (tetheredPosition - tetherPoint).normalized;
-
-        if (rb.velocity.IsComponentInDirectionPositive(direction))
-        {
-            rb.velocity = rb.velocity.RemoveComponentAlongAxis(direction);
-            _forceAccumulator = _forceAccumulator.IsComponentInDirectionPositive(direction) ? _forceAccumulator - _forceAccumulator.ComponentAlongAxis(direction) * (1 + Math.Abs(bounceMultiplier)) : _forceAccumulator;
-            AddTorqueWithForce(_subjectiveVelocity.ComponentAlongAxis(direction) * -(1 + Math.Abs(bounceMultiplier)), tetheredPosition, ForceMode.VelocityChange);
-        }
-
-        transform.position = tetherPoint + direction * tetherMaxLength - transform.rotation * tetherOffset;
-    }
-
-    public void Halt() => SetVelocity(default, default);
-
-    public void SetVelocity(Vector3 newSubjectiveVelocity, Vector3 newSubjectiveAngularVelocity = default)
-    {
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        _subjectiveVelocity = newSubjectiveVelocity;
-        _subjectiveAngularVelocity = newSubjectiveAngularVelocity;
-        rb.velocity = _subjectiveVelocity * experiencedTime;
-        rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
-        _prevGlobalTime = globalTime;
-        _prevRelativeTime = _relativeTime;
-
-        _ignoreForceUntilNextForceUpdate = true;
+        UnsubscribeFromLateFixedUpdate();
     }
 
     protected virtual void FixedUpdate()
     {
-        CheckGround();
         ForceUpdate();
+    }
+
+    protected virtual void LateFixedUpdate() //Runs after physics simulate
+    {
+        Vector3 expectedVelocity = _subjectiveVelocity;
+        BuiltInForceCorrection();
+        _normalForce = _subjectiveVelocity - expectedVelocity;
     }
 }

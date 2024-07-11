@@ -1,24 +1,22 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
 using UnityEngine;
 
 public class PhysicActor : PhysicObject
 {
+    [SerializeField] protected float _hoverHeight = 0.5f;
     [SerializeField] protected float _minimumDynamicSpeed = 0.01f;
     [SerializeField] protected float _moveMaxSpeed = 5f;
-    [SerializeField] protected float _moveMaxAcceleration = 0.5f;
-    [SerializeField] protected float _moveMaxDeceleration = 0.5f;
+    [SerializeField] protected float _moveMaxAcceleration = 5f; //Must be positive
+    [SerializeField] protected float _moveMaxDeceleration = 10f; //Must be positive and not less than _moveMaxAcceleration
     [SerializeField] protected float _moveControlGrounded = 1f;
-    [SerializeField] protected float _moveControlAerial = 0.01f;
-    [SerializeField] protected float _moveStrengthGrounded = 1f;
+    [SerializeField] protected float _moveControlAerial = 0.5f;
     [SerializeField] protected float _moveStrengthAerial = 0.5f;
     [Space]
     [SerializeField] protected float _hoverStrength = 0.75f;
     [SerializeField] protected float _hoverDamp = 0.95f;
     [SerializeField] protected float _hoverSnap = 0.1f;
+    [Space]
+    [SerializeField] protected Vector3 _relativeCastOrigin = new Vector3(0f, 0f, 0f);
     [Space]
     [SerializeField] protected float _orientStrengthGrounded = 0.95f;
     [SerializeField] protected float _orientStrengthAerial = 0.75f;
@@ -31,17 +29,19 @@ public class PhysicActor : PhysicObject
     private Vector3 _targetMove = default;
     private Vector3 _targetForward = default;
     private Vector3 _compositeUp = default;
+    protected Vector3 _groundNormal = default;
+    protected PhysicMaterial _groundPhysicMaterial;
 
     //getters and setters
+    public bool grounded { get { return _groundNormal != Vector3.zero; } }
     public float moveMaxSpeed { get { return _moveMaxSpeed; } }
-    public float moveMaxAcceleration { get { return Math.Abs(_moveMaxAcceleration); } }
-    public float moveMaxDeceleration { get { return Math.Max(Math.Abs(_moveMaxDeceleration), moveMaxAcceleration); } }
-    public float currentOrientStrength { get { return grounded ? _orientStrengthGrounded : _orientStrengthAerial; } }
-    public float currentMoveControl { get { return grounded ? _moveControlGrounded : _moveControlAerial; } }
-    public float currentMoveStrength { get { return grounded ? _moveStrengthGrounded : _moveStrengthAerial; } }
+    public float moveMaxAcceleration { get { return _moveMaxAcceleration; } }
+    public float moveMaxDeceleration { get { return _moveMaxDeceleration; } }
     public Vector3 targetMove { get { return _targetMove; } }
     public Vector3 targetForward { get { return _targetForward; } }
     public Vector3 compositeUp { get { return _compositeUp.normalized; } }
+    public override Vector3 groundNormal { get { return _groundNormal; } }
+    public virtual bool forceUngrounded { get { return false; } }
 
     public void SetTargetMove(Vector3 targetMove)
     {
@@ -59,120 +59,131 @@ public class PhysicActor : PhysicObject
         _targetForward = targetForward.normalized;
     }
 
-    public void Jump()
+    public virtual void Jump()
     {
-        if (paused)
+        if (isKinematic)
         {
             return;
         }
 
         AddForce(_compositeUp * _jumpVelocity, ForceMode.VelocityChange);
-        grounded = false;
+        UngroundActor();
     }
 
-    protected void HoverWithForce() //FIX - Test more + touching ground + snap? + bounciness using physicmaterial + relativeTime?
+    protected virtual RaycastHit CheckGround()
     {
-        if (paused)
+        Vector3 sweepVector = (subjectiveVelocity + GetCurrentForceAccumulator()) * Time.fixedDeltaTime - _compositeUp * (_hoverHeight + _hoverSnap);
+        Physics.Raycast(transform.position + transform.rotation * _relativeCastOrigin, sweepVector, out RaycastHit hit, sweepVector.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        Debug.DrawLine(transform.position + transform.rotation * _relativeCastOrigin, transform.position + transform.rotation * _relativeCastOrigin + sweepVector);
+        return hit;
+    }
+
+    protected void GroundActor(Vector3 normal, PhysicMaterial physicMaterial) 
+    {
+        _groundNormal = normal;
+        _groundPhysicMaterial = physicMaterial;
+
+        Vector3 gravityUp = -gravity.normalized;
+        _compositeUp = Vector3.Lerp(gravityUp, _groundNormal, Math.Clamp(_groundAngleInfluence.Evaluate(Vector3.Angle(gravityUp, _groundNormal) / 180f), 0f, 1f)).normalized;
+    }
+
+    protected void UngroundActor()
+    {
+        _groundNormal = default;
+        _groundPhysicMaterial = null;
+        _compositeUp = -gravity.normalized;
+    }
+
+    private Vector3 CalculateMoveForce(Vector3 flattenVector, float moveControl, float friction)
+    {
+        Vector3 moveVector = _targetMove.FlattenAgainstAxis(flattenVector) * _moveMaxSpeed;
+        Vector3 predictedVelocityOnPlane = (subjectiveVelocity + GetCurrentForceAccumulator()).RemoveComponentAlongAxis(flattenVector);
+        Vector3 predictedVelocityParallel = predictedVelocityOnPlane.ComponentAlongAxis(moveVector);
+        Vector3 predictedVelocityPerpendicular = predictedVelocityOnPlane - predictedVelocityParallel;
+
+        float simMoveMaxAcceleration = _moveMaxAcceleration * experiencedFixedDeltaTime * friction;
+        float simMoveMaxDeceleration = _moveMaxDeceleration * experiencedFixedDeltaTime * friction;
+
+        Vector3 accelerationForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(predictedVelocityOnPlane + moveVector, moveMaxSpeed) - predictedVelocityOnPlane, simMoveMaxAcceleration);
+
+        Vector3 velocityChangeForce;
+        if (predictedVelocityOnPlane.SignedMagnitudeInDirection(moveVector) >= 0f) //accelerating in moveDirection
+        {
+            velocityChangeForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector - predictedVelocityParallel, simMoveMaxAcceleration) - predictedVelocityPerpendicular, simMoveMaxDeceleration);
+        }
+        else
+        {
+            velocityChangeForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector + predictedVelocityParallel, simMoveMaxAcceleration) - Vector3.ClampMagnitude(predictedVelocityParallel, simMoveMaxDeceleration) - predictedVelocityPerpendicular, simMoveMaxDeceleration);
+        }
+
+        return Vector3.Lerp(accelerationForce, velocityChangeForce, moveControl);
+    }
+
+    protected virtual float GetFrictionForPhysicMaterial(PhysicMaterial physicMaterial, bool useStaticFriction)
+    {
+        return useStaticFriction ? physicMaterial.staticFriction : physicMaterial.dynamicFriction;
+    }
+
+    protected void ActionUpdate()
+    {
+        if (isKinematic)
         {
             return;
         }
 
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-        Vector3 gravityDirection = gravity.normalized;
-        Vector3 hoverForce = default;
-
-        if (Physics.Raycast(transform.position, gravityDirection, out RaycastHit hit, float.PositiveInfinity, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        //Floating and ground check
+        if (!forceUngrounded)
         {
-            float hoverError = _footToCenterDist - hit.distance;
-            Vector3 velocityParallelToGravity = subjectiveVelocity.ComponentAlongAxis(gravityDirection);
-            bool travellingAgainstGravity = velocityParallelToGravity.IsComponentInDirectionPositive(-1f * gravityDirection);
+            RaycastHit hit = CheckGround();
 
-            if (hoverError > 0)
+            if (hit.collider == null)
             {
-                hoverForce = _hoverStrength * -hoverError * gravityDirection / Time.fixedDeltaTime - _hoverDamp * velocityParallelToGravity; //FIX - this needs to be more intuitive...????
+                UngroundActor();
             }
-            else if (!travellingAgainstGravity && Math.Abs(hoverError) < _hoverSnap) //FIX
+            else
             {
-                hoverForce = default;
-                //hoverForce = (Math.Min(_hoverStrength, maxMultiplier) * -hoverError * gravityDirection) + (Math.Min(_hoverDamp, maxMultiplier) * velocityParallelToGravity);
+                float hoverError = _hoverHeight - hit.distance;
+                float subjectiveSpeedFromSurface = subjectiveVelocity.SignedMagnitudeInDirection(hit.normal);
+
+                if (hoverError == 0f)
+                {
+                    GroundActor(hit.normal, hit.collider.material);
+                }
+                else if (hoverError > 0f) //Actor is too close to the surface
+                {
+                    GroundActor(hit.normal, hit.collider.material);
+                    AddForce((_hoverStrength * hoverError - GetCurrentForceAccumulator().SignedMagnitudeInDirection(hit.normal) - subjectiveSpeedFromSurface * _hoverDamp) * hit.normal, ForceMode.VelocityChange); //FIX - groundphysicsmat
+                }
+                else //Actor is too far from the surface, but within snap range
+                {
+                }
             }
         }
-        AddForce(hoverForce, ForceMode.VelocityChange);
-    }
 
-    protected void MoveWithForce(float strength = 1f, float control = 1f) //accelerate subjectiveVelocity to _targetMove * _moveMaxSpeed or add _targetMove as force to subjectiveVelocity until max speed reached
-    {
-        if (paused)
-        {
-            return;
-        }
-
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        float simMoveMaxAcceleration = moveMaxAcceleration * relativeTime * globalTime;
-        float simMoveMaxDeceleration = moveMaxDeceleration * relativeTime * globalTime;
-
-        Vector3 moveVector = _targetMove.FlattenAgainstAxis(gravity).FlattenAgainstAxis(groundNormal) * _moveMaxSpeed; //moveVector is flattened twice so that the movement is predictable in edge cases
-        Vector3 velocityOnPlane = subjectiveVelocity.RemoveComponentAlongAxis(groundNormal);
-        Vector3 velocityChange = moveVector - velocityOnPlane;
-        Vector3 additiveMoveVector = moveVector.ClampInDirection(velocityChange, out Vector3 _);
-        Vector3 force = Vector3.Lerp(additiveMoveVector, velocityChange, control) * strength; //lerp between additive force and change force
-
-        Vector3 forceParallel = force.ComponentAlongAxis(moveVector);
-        Vector3 forcePerpendicular = force - forceParallel;
-        Vector3 velocityParallel = velocityOnPlane.ComponentAlongAxis(forceParallel);
-
-        forceParallel = forceParallel.ClampRelativeChange(velocityParallel, simMoveMaxAcceleration, simMoveMaxDeceleration, out _);
-        forcePerpendicular = Vector3.ClampMagnitude(forcePerpendicular, simMoveMaxDeceleration - forceParallel.magnitude); //perpendicular force will always be zero or a deceleration; total force magnitude will never exceed moveMaxDeceleration
-        force = forceParallel + forcePerpendicular;
-
+        //Movement
         if (grounded)
         {
-            force *= subjectiveVelocity.RemoveComponentAlongAxis(groundNormal).magnitude < _minimumDynamicSpeed ? _groundPhysicMaterial.staticFriction : _groundPhysicMaterial.dynamicFriction;
+            float friction = GetFrictionForPhysicMaterial(_groundPhysicMaterial, subjectiveVelocity.RemoveComponentAlongAxis(_groundNormal).magnitude < _minimumDynamicSpeed);
+            
+            AddForce(CalculateMoveForce(_groundNormal, _moveControlGrounded, friction), ForceMode.VelocityChange);
         }
-
-        AddForce(force, ForceMode.VelocityChange);
-    }
-
-    protected void OrientWithForce(Quaternion targetRotation, float strength)
-    {
-        if (paused)
+        else
         {
-            return;
+            AddForce(CalculateMoveForce(gravity, _moveControlAerial, _moveStrengthAerial), ForceMode.VelocityChange);
         }
-
-        Rigidbody rb = gameObject.GetComponent<Rigidbody>();
-
-        Quaternion deltaRotation = transform.rotation.ShortestRotation(targetRotation);
-        deltaRotation.ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
-        Vector3 rotationForce = rotAxis * rotDegrees * Mathf.Deg2Rad * strength * relativeTime * globalTime - rb.angularVelocity * _orientDamp;
+        
+        //Orientation
+        Vector3 lookForward = _targetForward == default ? transform.forward : _targetForward;
+        transform.rotation.ShortestRotation(Quaternion.LookRotation(lookForward.RemoveComponentAlongAxis(_compositeUp), _compositeUp)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
+        Vector3 rotationForce = rotAxis * rotDegrees * Math.Min(1f, (grounded ? _orientStrengthGrounded : _orientStrengthAerial) * experiencedTime) - GetCurrentTorqueAccumulator() - subjectiveAngularVelocity * _orientDamp;
 
         AddTorque(rotationForce, ForceMode.VelocityChange);
-    }
 
-    protected void CalculateCompositeUp()
-    {
-        Vector3 gravityUp = -gravity.normalized;
-        float t = Vector3.Angle(gravityUp, groundNormal) / 180f;
-        float groundAngleMultiplier = Math.Clamp(_groundAngleInfluence.Evaluate(t), 0f, 1f);
-        _compositeUp = (gravityUp.normalized * (1 - t) + groundNormal * t).normalized;
-    }
-
-    protected void PhysicsUpdate()
-    {
-        Vector3 lookForward = _targetForward == default ? transform.forward : _targetForward;
-        
-        MoveWithForce(currentMoveStrength, currentMoveControl); //MoveWithForce must be before CheckGround()
-        CheckGround();
-        CalculateCompositeUp();
-
-        OrientWithForce(Quaternion.LookRotation(lookForward.RemoveComponentAlongAxis(_compositeUp), _compositeUp), currentOrientStrength);
-        HoverWithForce(); //HoverWithForce must be after CheckGround()
         ForceUpdate();
     }
 
-    protected virtual void FixedUpdate()
+    protected override void LateFixedUpdate() //Runs after physics simulate
     {
-        PhysicsUpdate();
+        BuiltInForceCorrection();
     }
 }
