@@ -11,10 +11,13 @@ public class PhysicObject : MonoBehaviour
     public static float globalTime = 1f; //Use for slowdown and speed up effect and pausing, should not be updated in FixedUpdate()
 
     [SerializeField] protected bool _usePrevGravityIn0g = true; //If true and _gravityBuffer == Vector3.zero, _gravity will not be overwritten and will be applied as gravity force in ForceUpdate()
+    [Space]
+    [SerializeField] protected bool _simulationModeAsScript = false;
 
     private Rigidbody _rb;
 
     private float _relativeTime = 1f; //Objects can experience the passage of time differently - this may have unexpected effects on acceleration if they interact, should not be updated in FixedUpdate()
+    private float _simulationDeltaTime = 0.01f; 
     private Vector3 _gravityBuffer = default;
     private Vector3 _gravity = new(0f, -10f, 0f); //If _usePrevGravityIn0g and _gravityBuffer == Vector3.zero, value will be defaulted to (not recommended)
     private Vector3 _normalForce = default;
@@ -31,9 +34,7 @@ public class PhysicObject : MonoBehaviour
     public Rigidbody rb { get { return _rb; } }
     protected Vector3 normalForce { get { return _normalForce; } }
     public float relativeTime { get { return _relativeTime; } }
-    public float experiencedTime { get { return globalTime * _relativeTime; } }
-    public float experiencedDeltaTime { get { return Time.deltaTime * _relativeTime * globalTime; } }
-    public float experiencedFixedDeltaTime { get { return Time.fixedDeltaTime * _relativeTime * globalTime; } }
+    public virtual float experiencedSimulationDeltaTime { get { return _simulationDeltaTime * _relativeTime * globalTime; } }
     public bool isKinematic { get { return _rb.isKinematic; } }
     
     public Vector3 gravity { get { return _gravity; } }
@@ -57,12 +58,28 @@ public class PhysicObject : MonoBehaviour
         _rb.isKinematic = value;
     }
 
-    protected void SubscribeToLateFixedUpdate()
+    public virtual void SetSimulationModeAsScript(bool value)
+    {
+        if (value)
+        {
+            SubscribeToLateFixedUpdate();
+            return;
+        }
+
+        UnsubscribeFromLateFixedUpdate();
+    }
+
+    public virtual void SetSimulationDeltaTime(float value)
+    {
+        _simulationDeltaTime = value;
+    }
+
+    public void SubscribeToLateFixedUpdate()
     {
         LateFixedUpdateBroadcaster.LateFixedUpdate += LateFixedUpdate;
     }
 
-    protected void UnsubscribeFromLateFixedUpdate()
+    public void UnsubscribeFromLateFixedUpdate()
     {
         LateFixedUpdateBroadcaster.LateFixedUpdate -= LateFixedUpdate;
     }
@@ -77,7 +94,7 @@ public class PhysicObject : MonoBehaviour
         return _torqueAccumulator;
     }
 
-    public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false)
+    public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false) //Forces affect subjective velocities, not actual velocities
     {
         if (isGravityForce)
         {
@@ -94,23 +111,23 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedForce = force * experiencedFixedDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedForce = force * experiencedSimulationDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
-                interpretedForce = force * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedForce = force * experiencedSimulationDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
-                interpretedForce = force / _rb.mass;
+                interpretedForce = force / _rb.mass; //Impulse is not dependent on experiencedTime because it will be applied once
                 break;
             case ForceMode.VelocityChange:
-                interpretedForce = force;
+                interpretedForce = force; //VelocityChange is not dependent on experiencedTime because it will be applied once
                 break;
         }
 
         _forceAccumulator += interpretedForce;
     }
 
-    public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force)
+    public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force) //Forces affect subjective velocities, not actual velocities
     {
         if (isKinematic || _ignoreTorqueUntilNextForceUpdate)
         {
@@ -122,16 +139,16 @@ public class PhysicObject : MonoBehaviour
         switch (forceMode)
         {
             case ForceMode.Force:
-                interpretedTorque = torque * experiencedFixedDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedTorque = torque * experiencedSimulationDeltaTime / _rb.mass; //Force is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Acceleration:
-                interpretedTorque = torque * experiencedFixedDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
+                interpretedTorque = torque * experiencedSimulationDeltaTime; //Acceleration is dependent on experiencedTime because it should be applied every FixedUpdate
                 break;
             case ForceMode.Impulse:
-                interpretedTorque = torque / _rb.mass;
+                interpretedTorque = torque / _rb.mass; //Impulse is not dependent on experiencedTime because it will be applied once
                 break;
             case ForceMode.VelocityChange:
-                interpretedTorque = torque;
+                interpretedTorque = torque; //VelocityChange is not dependent on experiencedTime because it will be applied once
                 break;
         }
 
@@ -197,7 +214,7 @@ public class PhysicObject : MonoBehaviour
     public void SetVelocity(Vector3 newSubjectiveVelocity, bool ignoreForceUntilNextForceUpdate = true)
     {
         _subjectiveVelocity = Vector3.ClampMagnitude(newSubjectiveVelocity, velocityCap);
-        _rb.velocity = _subjectiveVelocity * experiencedTime;
+        _rb.velocity = _subjectiveVelocity * globalTime * _relativeTime;
 
         _forceAccumulator = default;
 
@@ -207,7 +224,7 @@ public class PhysicObject : MonoBehaviour
     public void SetAngularVelocity(Vector3 newSubjectiveAngularVelocity, bool ignoreTorqueUntilNextForceUpdate = true)
     {
         _subjectiveAngularVelocity = Vector3.ClampMagnitude(newSubjectiveAngularVelocity, angularVelocityCap);
-        _rb.angularVelocity = _subjectiveAngularVelocity * experiencedTime;
+        _rb.angularVelocity = _subjectiveAngularVelocity * globalTime * _relativeTime;
 
         _torqueAccumulator = default;
 
@@ -217,20 +234,37 @@ public class PhysicObject : MonoBehaviour
     public virtual void OnEnable()
     {
         SetRigidbodyPointer();
+        
+        if (_simulationModeAsScript)
+        {
+            return;
+        }
+
         SubscribeToLateFixedUpdate();
+        SetSimulationDeltaTime(Time.fixedDeltaTime);
     }
 
     public virtual void OnDisable()
     {
+        if (_simulationModeAsScript)
+        {
+            return;
+        }
+
         UnsubscribeFromLateFixedUpdate();
     }
 
-    protected virtual void FixedUpdate()
+    public virtual void FixedUpdate()
     {
+        if (_simulationModeAsScript)
+        {
+            return;
+        }
+
         ForceUpdate();
     }
 
-    protected virtual void LateFixedUpdate() //Runs after physics simulate
+    public virtual void LateFixedUpdate() //Runs after physics simulate
     {
         Vector3 expectedVelocity = _subjectiveVelocity;
         BuiltInForceCorrection();
