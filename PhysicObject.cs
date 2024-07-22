@@ -17,7 +17,7 @@ public class PhysicObject : MonoBehaviour
     private Rigidbody _rb;
 
     private float _relativeTime = 1f; //Objects can experience the passage of time differently - this may have unexpected effects on acceleration if they interact, should not be updated in FixedUpdate()
-    private float _simulationDeltaTime = 0.01f; 
+    private float _simulationDeltaTime = 0.01f;
     private Vector3 _gravityBuffer = default;
     private Vector3 _gravity = new(0f, -10f, 0f); //If _usePrevGravityIn0g and _gravityBuffer == Vector3.zero, value will be defaulted to (not recommended)
     private Vector3 _normalForce = default;
@@ -36,7 +36,7 @@ public class PhysicObject : MonoBehaviour
     public float relativeTime { get { return _relativeTime; } }
     public virtual float experiencedSimulationDeltaTime { get { return _simulationDeltaTime * _relativeTime * globalTime; } }
     public bool isKinematic { get { return _rb.isKinematic; } }
-    
+
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } }
     public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } }
@@ -100,7 +100,7 @@ public class PhysicObject : MonoBehaviour
         {
             _gravityBuffer += force;
         }
-        
+
         if (isKinematic || _ignoreForceUntilNextForceUpdate)
         {
             return;
@@ -159,12 +159,12 @@ public class PhysicObject : MonoBehaviour
     {
         if (isKinematic || (_ignoreForceUntilNextForceUpdate && _ignoreTorqueUntilNextForceUpdate))
         {
-            return; 
+            return;
         }
 
         Vector3 lever = position - transform.TransformPoint(_rb.centerOfMass);
         Vector3 torque = force.RemoveComponentAlongAxis(lever) * lever.magnitude;
-        
+
         AddForce(force, forceMode);
         AddTorque(torque, forceMode);
     }
@@ -191,7 +191,7 @@ public class PhysicObject : MonoBehaviour
 
             _forceAccumulator = default;
             _torqueAccumulator = default;
-            
+
             _normalForce = default;
             return;
         }
@@ -234,7 +234,7 @@ public class PhysicObject : MonoBehaviour
     public virtual void OnEnable()
     {
         SetRigidbodyPointer();
-        
+
         if (_simulationModeAsScript)
         {
             return;
