@@ -213,6 +213,5 @@ public class PhysicActor : PhysicObject
     public override void LateFixedUpdate() //Runs after physics simulate
     {
         BuiltInForceCorrection();
-        UnsubscribeFromLateFixedUpdate();
     }
 }
