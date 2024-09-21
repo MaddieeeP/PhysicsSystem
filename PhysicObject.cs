@@ -2,7 +2,6 @@ using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Collider))]
-[RequireComponent(typeof(MeshFilter))]
 
 public class PhysicObject : MonoBehaviour
 {
@@ -35,8 +34,7 @@ public class PhysicObject : MonoBehaviour
     protected Vector3 normalForce { get { return _normalForce; } }
     public float relativeTime { get { return _relativeTime; } }
     public virtual float experiencedSimulationDeltaTime { get { return _simulationDeltaTime * _relativeTime * globalTime; } }
-    public bool isKinematic { get { return _rb.isKinematic; } }
-
+    public bool isKinematic { get { return _rb.isKinematic; } set { _rb.isKinematic = value; } }
     public Vector3 gravity { get { return _gravity; } }
     public Vector3 subjectiveVelocity { get { return _subjectiveVelocity; } }
     public Vector3 subjectiveAngularVelocity { get { return _subjectiveAngularVelocity; } }
@@ -94,13 +92,14 @@ public class PhysicObject : MonoBehaviour
         return _torqueAccumulator;
     }
 
-    public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force, bool isGravityForce = false) //Forces affect subjective velocities, not actual velocities
+    public void AddGravityForce(Vector3 force)
     {
-        if (isGravityForce)
-        {
-            _gravityBuffer += force;
-        }
+        _gravityBuffer += force;
+        AddForce(force, ForceMode.Acceleration);
+    }
 
+    public new void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force) //Forces affect subjective velocities, not actual velocities
+    {
         if (isKinematic || _ignoreForceUntilNextForceUpdate)
         {
             return;
@@ -127,7 +126,7 @@ public class PhysicObject : MonoBehaviour
         _forceAccumulator += interpretedForce;
     }
 
-    public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force) //Forces affect subjective velocities, not actual velocities
+    public new void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force) //Forces affect subjective velocities, not actual velocities
     {
         if (isKinematic || _ignoreTorqueUntilNextForceUpdate)
         {
@@ -155,7 +154,7 @@ public class PhysicObject : MonoBehaviour
         _torqueAccumulator += interpretedTorque;
     }
 
-    public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
+    public new void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force)
     {
         if (isKinematic || (_ignoreForceUntilNextForceUpdate && _ignoreTorqueUntilNextForceUpdate))
         {
@@ -173,7 +172,7 @@ public class PhysicObject : MonoBehaviour
     {
         if (_usePrevGravityIn0g && _gravityBuffer == default)
         {
-            AddForce(_gravity, ForceMode.Acceleration, true); //_gravity is not updated
+            AddForce(_gravity, ForceMode.Acceleration); //_gravity is not updated
         }
         else
         {
@@ -214,7 +213,7 @@ public class PhysicObject : MonoBehaviour
     public void SetVelocity(Vector3 newSubjectiveVelocity, bool ignoreForceUntilNextForceUpdate = true)
     {
         _subjectiveVelocity = Vector3.ClampMagnitude(newSubjectiveVelocity, velocityCap);
-        _rb.velocity = _subjectiveVelocity * globalTime * _relativeTime;
+        _rb.velocity = _relativeTime * globalTime * _subjectiveVelocity;
 
         _forceAccumulator = default;
 
@@ -224,7 +223,7 @@ public class PhysicObject : MonoBehaviour
     public void SetAngularVelocity(Vector3 newSubjectiveAngularVelocity, bool ignoreTorqueUntilNextForceUpdate = true)
     {
         _subjectiveAngularVelocity = Vector3.ClampMagnitude(newSubjectiveAngularVelocity, angularVelocityCap);
-        _rb.angularVelocity = _subjectiveAngularVelocity * globalTime * _relativeTime;
+        _rb.angularVelocity = _relativeTime * globalTime * _subjectiveAngularVelocity;
 
         _torqueAccumulator = default;
 

@@ -51,6 +51,21 @@ public class PhysicActor : PhysicObject
         UngroundActor();
     }
 
+    protected virtual float GetFrictionForPhysicMaterial(PhysicMaterial physicMaterial, bool useStaticFriction)
+    {
+        return useStaticFriction ? physicMaterial.staticFriction : physicMaterial.dynamicFriction;
+    }
+
+    protected virtual RaycastHit GetSurfaceHit(RaycastHit hit)
+    {
+        if (Vector3.Angle(hit.normal, groundNormal == default ? -gravity : groundNormal) > _maxNormalChange)
+        {
+            return default;
+        }
+
+        return hit;
+    }
+
     protected RaycastHit CheckGround()
     {
         Vector3 sweepVector = (subjectiveVelocity + GetCurrentForceAccumulator()) * 0.05f - _compositeUp * (_hoverHeight + _hoverSnap); //0.05f is an arbitary constant for how the time step this function considers; it must be a constant to maintain predictability
@@ -60,7 +75,9 @@ public class PhysicActor : PhysicObject
         bool colliderActive = thisCollider.enabled;
         thisCollider.enabled = false;
 
-        if (!Physics.Raycast(castOrigin, sweepVector, out RaycastHit hit, sweepVector.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        RaycastHit[] hits = Physics.RaycastAll(castOrigin, sweepVector, sweepVector.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+        if (hits.Length == 0)
         {
             thisCollider.enabled = colliderActive;
             return default;
@@ -68,34 +85,17 @@ public class PhysicActor : PhysicObject
 
         thisCollider.enabled = colliderActive;
 
-        ObjectProperties properties = hit.transform.GetComponent<ObjectProperties>();
+        foreach (RaycastHit hit in hits)
+        {
+            RaycastHit surfaceHit = GetSurfaceHit(hit);
 
-        if (properties == null)
-        {
-            if (Vector3.Angle(hit.normal, groundNormal == default ? -gravity : groundNormal) > _maxNormalChange)
+            if (surfaceHit.normal != default)
             {
-                return default;
-            }
-        }
-        else
-        {
-            switch (properties.floorBehaviour)
-            {
-                case FloorBehaviour.None:
-                    return default;
-                case FloorBehaviour.FollowNormal:
-                    if (Vector3.Angle(hit.normal, groundNormal == default ? -gravity : groundNormal) > _maxNormalChange)
-                    {
-                        return default;
-                    }
-                    break;
-                case FloorBehaviour.FollowGravity:
-                    hit.normal = -gravity.normalized;
-                    break;
-            }
+                return surfaceHit;
+            }    
         }
 
-        return hit;
+        return default;
     }
 
     protected void GroundActor(Vector3 normal, PhysicMaterial physicMaterial) 
@@ -137,11 +137,6 @@ public class PhysicActor : PhysicObject
         }
 
         return Vector3.Lerp(accelerationForce, velocityChangeForce, moveControl);
-    }
-
-    protected virtual float GetFrictionForPhysicMaterial(PhysicMaterial physicMaterial, bool useStaticFriction)
-    {
-        return useStaticFriction ? physicMaterial.staticFriction : physicMaterial.dynamicFriction;
     }
 
     public void ActionUpdate(Vector3 targetMove, Vector3 targetForward)

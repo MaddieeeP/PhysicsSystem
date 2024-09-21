@@ -1,6 +1,4 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public abstract class ForceField : MonoBehaviour
@@ -23,7 +21,12 @@ public abstract class ForceField : MonoBehaviour
             PhysicObject physicObject = collider.transform.GetComponent<PhysicObject>();
             if (physicObject != null)
             {
-                physicObject.AddForce(GetForce(physicObject), forceMode, _isGravityForce);
+                if (_isGravityForce)
+                {
+                    physicObject.AddGravityForce(GetForce(physicObject));
+                    continue;
+                }
+                physicObject.AddForce(GetForce(physicObject), forceMode);
             }
         }
     }
