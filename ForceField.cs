@@ -12,21 +12,21 @@ public abstract class ForceField : MonoBehaviour
     public bool isGravityForce { get { return _isGravityForce; } }
     public float magnitude { get { return Math.Abs(_magnitude); } }
 
-    public abstract Vector3 GetForce(PhysicObject physicObject);
+    public abstract Vector3 GetForce(Entity entity);
 
     public void Tick(Collider[] colliders)
     {
         foreach (Collider collider in colliders)
         {
-            PhysicObject physicObject = collider.transform.GetComponent<PhysicObject>();
-            if (physicObject != null)
+            Entity entity = collider.transform.GetComponent<Entity>();
+            if (entity != null)
             {
                 if (_isGravityForce)
                 {
-                    physicObject.AddGravityForce(GetForce(physicObject));
+                    entity.AddGravityForce(GetForce(entity));
                     continue;
                 }
-                physicObject.AddForce(GetForce(physicObject), forceMode);
+                entity.AddForce(GetForce(entity), forceMode);
             }
         }
     }

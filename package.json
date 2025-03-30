@@ -6,6 +6,7 @@
   "rootnamespace": "daydream",
   "dependencies": {
     "com.unity.splines": "2.0.0",
+    "com.unity.mathematics": "1.0.0",
     "com.daydream.extensionmethods": "0.0.0",
     "com.daydream.splineextensions": "0.0.0",
     "com.daydream.utilities": "0.0.0"

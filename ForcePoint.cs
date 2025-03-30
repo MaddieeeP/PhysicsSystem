@@ -15,9 +15,9 @@ public class ForcePoint : ForceField
         Tick(colliders);
     }
 
-    public override Vector3 GetForce(PhysicObject physicObject)
+    public override Vector3 GetForce(Entity entity)
     {
-        Vector3 positionDifference = transform.position - physicObject.transform.position;
+        Vector3 positionDifference = transform.position - entity.transform.position;
         float falloffMultiplier = Math.Clamp(_fallOff.Evaluate(positionDifference.magnitude / _radius), 0f, 1f);
         return positionDifference.normalized * magnitude * falloffMultiplier * _repelMultiplier;
     }

@@ -23,17 +23,17 @@ public class ForceSpline : ForceField
         Tick(colliders);
     }
 
-    public override Vector3 GetForce(PhysicObject physicObject)
+    public override Vector3 GetForce(Entity entity)
     {
-        Vector3 splinePoint = splineContainer.GetClosestPoint(physicObject.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
-        splineContainer.GetPoint(0, t, out Vector3 forward, out Vector3 up);
+        Vector3 splinePoint = splineContainer.GetClosestPoint(entity.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
+        splineContainer.Spline.Evaluate(t, out Vector3 position, out Vector3 forward, out Vector3 up);
 
         if (distance > _sampleMaxDistance) 
         { 
             return default;
         }
 
-        Vector3 positionDifference = splinePoint - physicObject.transform.position;
+        Vector3 positionDifference = splinePoint - entity.transform.position;
 
         if (positionDifference.ComponentAlongAxis(forward).magnitude > _maxClosestPointInaccuracy)
         {

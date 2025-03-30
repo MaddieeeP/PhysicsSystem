@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class ForceDownBox : ForceField
@@ -12,7 +10,7 @@ public class ForceDownBox : ForceField
         Tick(colliders);
     }
 
-    public override Vector3 GetForce(PhysicObject physicObject)
+    public override Vector3 GetForce(Entity entity)
     {
         float falloffMultiplier = 1f; //FIX - use relative distance along relative y axis
         return transform.up * -magnitude * falloffMultiplier;
