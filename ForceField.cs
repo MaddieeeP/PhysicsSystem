@@ -1,7 +1,8 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
-public abstract class ForceField : MonoBehaviour
+public abstract class ForceField : SimulationObject
 {
     [SerializeField] protected bool _isGravityForce = false;
     [SerializeField] protected float _magnitude = 9.8f;
@@ -12,22 +13,20 @@ public abstract class ForceField : MonoBehaviour
     public bool isGravityForce { get { return _isGravityForce; } }
     public float magnitude { get { return Math.Abs(_magnitude); } }
 
+    protected abstract List<Entity> GetCollidingEntities();
     public abstract Vector3 GetForce(Entity entity);
 
-    public void Tick(Collider[] colliders)
+    public override void SimulationUpdate(float deltaTime)
     {
-        foreach (Collider collider in colliders)
+        List<Entity> entities = GetCollidingEntities();
+        foreach (Entity entity in entities)
         {
-            Entity entity = collider.transform.GetComponent<Entity>();
-            if (entity != null)
+            if (_isGravityForce)
             {
-                if (_isGravityForce)
-                {
-                    entity.AddGravityForce(GetForce(entity));
-                    continue;
-                }
-                entity.AddForce(GetForce(entity), forceMode);
+                entity.AddGravityForce(GetForce(entity));
+                continue;
             }
+            entity.AddForce(GetForce(entity), forceMode);
         }
     }
 }

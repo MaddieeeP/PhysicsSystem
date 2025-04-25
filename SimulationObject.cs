@@ -7,8 +7,7 @@ public abstract class SimulationObject : MonoBehaviour
     private float _relativeTimeScale = 1f;
     private float _relativeTimeScaleBuffer = 1f;
 
-    public abstract Vector3 velocity { get; } //velocity is relative
-    public abstract Vector3 angularVelocity { get; } //angularVelocity is relative
+    
     public SimulationMode simulationMode { get { return _simulationMode; } }
     public float relativeTimeScale { get { return _relativeTimeScale; } }
 
@@ -73,11 +72,6 @@ public abstract class SimulationObject : MonoBehaviour
             SimulationController.UnityUpdate -= SimulationUpdate;
             SimulationController.UnityLateUpdate -= LateSimulationUpdate;
         }
-    }
-
-    public virtual RaycastHitInfoVerbose GetAdjustedSurfaceInfo(RaycastHitInfoVerbose surfaceInfo) //Modify transformInfo and point to reflect motion
-    {
-        return surfaceInfo;
     }
 
     public virtual void SimulationUpdate(float deltaTime) { } //Data from other SimulationObjects can be read

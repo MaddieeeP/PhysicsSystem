@@ -9,10 +9,19 @@ public class ForcePoint : ForceField
     [SerializeField] protected bool _repel = false;
     protected int _repelMultiplier { get { return _repel ? -1 : 1; } }
 
-    void FixedUpdate()
+    protected override List<Entity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapSphere(transform.position, _radius);
-        Tick(colliders);
+        List<Entity> entities = new List<Entity>();
+        foreach (Collider collider in colliders)
+        {
+            Entity entity = collider.GetComponent<Entity>();
+            if (entity != null)
+            {
+                entities.Add(entity);
+            }
+        }
+        return entities;
     }
 
     public override Vector3 GetForce(Entity entity)

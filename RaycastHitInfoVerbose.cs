@@ -32,6 +32,11 @@ public class RaycastHitInfoVerbose : RaycastHitInfo
         }
     }
 
+    public RaycastHitInfoVerbose(RaycastHitInfoVerbose hit) : base(hit)
+    {
+        _triangleEdgeFacing = hit._triangleEdgeFacing;
+    }
+
     public static float GetTriangleEdgeFacing(Vector3 point, Vector3 forward, Vector3 normal, Mesh mesh, int triangleIndex)
     {
         int[] triangles = mesh.triangles;

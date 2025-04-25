@@ -91,6 +91,16 @@ public class BasicEntity : Entity
         AddTorque(torque, forceMode);
     }
 
+    public void MovePosition(Vector3 targetPosition)
+    {
+        _rb.MovePosition(targetPosition);
+    }
+
+    public void MoveRotation(Quaternion targetRotation)
+    {
+        _rb.MoveRotation(targetRotation);
+    }
+
     public void SetVelocities(Vector3 velocity, Vector3 angularVelocity) //Does not apply if SimulationController.globalTimeScale * relativeTimeScale == 0f or isKinematic
     {
         _rb.velocity = velocity;
@@ -130,8 +140,8 @@ public class BasicEntity : Entity
         }
         else
         {
-            Vector3 trueVelocity = (_velocity + _velocityChangeAccumulator + timeScale * deltaTime * _accelerationAccumulator) * timeScale;
-            Vector3 trueAngularVelocity = (_angularVelocity + _angularVelocityChangeAccumulator + timeScale * deltaTime * _angularAccelerationAccumulator) * timeScale;
+            Vector3 trueVelocity = _rb.velocity + (_velocityChangeAccumulator + timeScale * deltaTime * _accelerationAccumulator) * timeScale;
+            Vector3 trueAngularVelocity = _rb.angularVelocity + (_angularVelocityChangeAccumulator + timeScale * deltaTime * _angularAccelerationAccumulator) * timeScale;
             ModifyTrueVelocities(ref trueVelocity, ref trueAngularVelocity, deltaTime);
             _rb.velocity = trueVelocity;
             _rb.angularVelocity = trueAngularVelocity;

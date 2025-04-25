@@ -15,10 +15,19 @@ public class ForceTwist : ForceField
     [SerializeField] protected int _sampleResolution = 3;
     [SerializeField] protected int _sampleIterations = 5;
 
-    void FixedUpdate()
+    protected override List<Entity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapSphere(_overlapSphereCenter, _radius);
-        Tick(colliders);
+        List<Entity> entities = new List<Entity>();
+        foreach (Collider collider in colliders)
+        {
+            Entity entity = collider.GetComponent<Entity>();
+            if (entity != null)
+            {
+                entities.Add(entity);
+            }
+        }
+        return entities;
     }
 
     public override Vector3 GetForce(Entity entity)

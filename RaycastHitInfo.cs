@@ -38,6 +38,20 @@ public class RaycastHitInfo
         _transformInfo = new TransformInfo(hit.transform);
     }
 
+    public RaycastHitInfo(RaycastHitInfo hit)
+    {
+        _transform = hit.transform;
+        _articulationBody = hit.articulationBody;
+        _rigidbody = hit.rigidbody;
+        _collider = hit.collider;
+        _triangleIndex = hit.triangleIndex;
+        _distance = hit.distance;
+        _normal = hit.normal;
+        _point = hit.point;
+        _barycentricCoordinate = hit.barycentricCoordinate;
+        _transformInfo = new TransformInfo(hit.transform);
+    }
+
     public RaycastHitInfo(Transform hitTransform, ArticulationBody hitArticulationBody, Rigidbody hitRigidbody, Collider hitCollider, int hitTriangleIndex, float hitDistance, Vector3 hitNormal, Vector3 hitPoint, Vector3 hitBarycentricCoordinate)
     {
         _transform = hitTransform;

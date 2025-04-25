@@ -1,13 +1,23 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class ForceDownBox : ForceField
 {
     [SerializeField] protected Vector3 _halfExtents;
 
-    void FixedUpdate()
+    protected override List<Entity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapBox(transform.position, _halfExtents, transform.rotation);
-        Tick(colliders);
+        List<Entity> entities = new List<Entity>();
+        foreach (Collider collider in colliders)
+        {
+            Entity entity = collider.GetComponent<Entity>();
+            if (entity != null)
+            {
+                entities.Add(entity);
+            }
+        }
+        return entities;
     }
 
     public override Vector3 GetForce(Entity entity)
