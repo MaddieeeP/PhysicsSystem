@@ -57,7 +57,7 @@ public class SplineFollow : Entity //FIX - add editor with speed and duration op
 
         _splineContainer.Spline.Evaluate(_curve.Evaluate(_t), out Vector3 position, out Vector3 forward, out Vector3 up);
         _trueVelocityBuffer = (position - transform.position) / deltaTime;
-        _rb.velocity = _trueVelocityBuffer;
+        _rb.linearVelocity = _trueVelocityBuffer;
         Quaternion.Inverse(transform.rotation).ToAngleAxis(out float angle, out Vector3 axis);
         _rb.angularVelocity = angle * axis * Mathf.Deg2Rad / deltaTime;
     }

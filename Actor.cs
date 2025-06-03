@@ -8,13 +8,9 @@ public abstract class Actor : BasicEntity
     [SerializeField] protected float _moveMaxSpeed = 5f; //Must be positive
     [SerializeField] protected float _moveMaxAcceleration = 5f; //Must be positive
     [SerializeField] protected float _moveMaxDeceleration = 10f; //Must be positive and not less than _moveMaxAcceleration
-    [SerializeField] protected float _moveControlGrounded = 1f;
-    [SerializeField] protected float _moveControlAerial = 0.5f;
-    [SerializeField] protected float _moveStrengthAerial = 0.5f;
+    [SerializeField] protected float _moveAerialFriction = 0.5f;
     [Space]
-    [SerializeField] protected float _hoverHeight = 0.5f;
-    [SerializeField] protected float _hoverStrength = 0.75f;
-    [SerializeField] protected float _hoverDamp = 0.95f;
+    [SerializeField] protected float _hoverHeight = 0.5f; //FIX - use second order animator to control height
     [SerializeField] protected float _hoverError = 0.1f;
     [Space]
     [SerializeField] protected Vector3 _relativeCastOrigin = Vector3.zero;
@@ -39,17 +35,14 @@ public abstract class Actor : BasicEntity
 
     protected override void ModifyTrueVelocities(ref Vector3 trueVelocity, ref Vector3 trueAngularVelocity, float deltaTime)
     {
-        Vector3 normal;
-        float moveControl;
-        float friction;
-        float orientStrength;
         float scaledDeltaTime = deltaTime * relativeTimeScale * SimulationController.globalTimeScale;
-        Vector3 surfaceVelocity = Vector3.zero;
 
         if (grounded)
         {
             float hoverError;
             float speedFromSurface;
+            Vector3 surfaceVelocity = default;
+            Vector3 normal;
 
             Entity surfaceEntity = _surfaceInfo.transform.GetComponent<Entity>();
             if (surfaceEntity != null)
@@ -58,13 +51,13 @@ public abstract class Actor : BasicEntity
 
                 Vector3 surfaceTrueVelocity = surfaceEntity.velocity;// * surfaceEntity.relativeTimeScale * SimulationController.globalTimeScale;
                 Vector3 surfaceNextTrueVelocity = (adjustedSurfaceInfo.point - _surfaceInfo.point) / deltaTime;
-                Debug.Log(surfaceTrueVelocity);
-                Debug.Log(surfaceNextTrueVelocity);
+
                 trueVelocity += (surfaceNextTrueVelocity - surfaceTrueVelocity).RemoveComponentAlongAxis(adjustedSurfaceInfo.normal) * surfaceEntity.collider.material.staticFriction; //Apply surface acceleration
 
-                hoverError = _hoverHeight - Vector3.Distance(transform.position + transform.rotation * _relativeCastOrigin, adjustedSurfaceInfo.point);
+                hoverError = _hoverHeight - (transform.position + transform.rotation * _relativeCastOrigin - adjustedSurfaceInfo.point).ComponentAlongAxis(_up).magnitude;
                 speedFromSurface = (trueVelocity - surfaceNextTrueVelocity).SignedMagnitudeInDirection(adjustedSurfaceInfo.normal);
                 normal = adjustedSurfaceInfo.normal;
+                surfaceVelocity = surfaceNextTrueVelocity;
             }
             else //Static surface
             {
@@ -75,46 +68,46 @@ public abstract class Actor : BasicEntity
 
             if (hoverError > 0f) //Actor is too close to the surface
             {
-                float dampingForce = Math.Max(-speedFromSurface * _hoverDamp, 0f);  
-                trueVelocity += (_hoverStrength * hoverError + dampingForce) * _surfaceInfo.normal;
+                float dampingForce = Math.Max(-speedFromSurface, 0f);
+                trueVelocity += (hoverError + dampingForce) * _surfaceInfo.normal;
             }
-            
-            moveControl = _moveControlGrounded;
-            friction = velocity.magnitude / relativeTimeScale > _minimumDynamicSpeed ? _surfaceInfo.collider.material.staticFriction : _surfaceInfo.collider.material.dynamicFriction;
-            orientStrength = _orientStrengthGrounded;
+
+            transform.rotation.ShortestRotation(Quaternion.LookRotation(GetTargetForward().RemoveComponentAlongAxis(_up), _up)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
+            trueAngularVelocity += _orientStrengthGrounded * rotDegrees * rotAxis - _orientDamp * SimulationController.globalTimeScale * relativeTimeScale * trueAngularVelocity;
+
+            Vector3 moveVector = GetTargetMove().FlattenAgainstAxis(normal) * _moveMaxSpeed;
+            Vector3 predictedVelocityAlongSurfacePlane = (trueVelocity - surfaceVelocity).RemoveComponentAlongAxis(normal);
+            Vector3 predictedVelocityParallel = predictedVelocityAlongSurfacePlane.ComponentAlongAxis(moveVector);
+            Vector3 predictedVelocityPerpendicular = predictedVelocityAlongSurfacePlane - predictedVelocityParallel;
+
+            float friction = velocity.magnitude / relativeTimeScale > _minimumDynamicSpeed ? _surfaceInfo.collider.material.staticFriction : _surfaceInfo.collider.material.dynamicFriction;
+            float stepMaxAccelerationVelocityChange = _moveMaxAcceleration * scaledDeltaTime * friction;
+            float stepMaxDecelerationVelocityChange = _moveMaxDeceleration * scaledDeltaTime * friction;
+
+            if (predictedVelocityAlongSurfacePlane.SignedMagnitudeInDirection(moveVector) >= 0f) //accelerating in moveDirection
+            {
+                trueVelocity += Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector - predictedVelocityParallel, stepMaxAccelerationVelocityChange) - predictedVelocityPerpendicular, stepMaxDecelerationVelocityChange);
+            }
+            else
+            {
+                trueVelocity += Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector + predictedVelocityParallel, stepMaxAccelerationVelocityChange) - Vector3.ClampMagnitude(predictedVelocityParallel, stepMaxDecelerationVelocityChange) - predictedVelocityPerpendicular, stepMaxDecelerationVelocityChange);
+            }
         }
         else
         {
-            normal = _up;
-            moveControl = _moveControlAerial;
-            friction = _moveStrengthAerial;
-            orientStrength = _orientStrengthAerial;
+            transform.rotation.ShortestRotation(Quaternion.LookRotation(GetTargetForward().RemoveComponentAlongAxis(_up), _up)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
+            trueAngularVelocity += _orientStrengthAerial * rotDegrees * rotAxis - _orientDamp * SimulationController.globalTimeScale * relativeTimeScale * trueAngularVelocity;
+
+            Vector3 moveVector = GetTargetMove().FlattenAgainstAxis(_up) * _moveMaxSpeed;
+            Vector3 predictedVelocityAlongSurfacePlane = trueVelocity.RemoveComponentAlongAxis(_up);
+            Vector3 predictedVelocityParallel = predictedVelocityAlongSurfacePlane.ComponentAlongAxis(moveVector);
+            Vector3 predictedVelocityPerpendicular = predictedVelocityAlongSurfacePlane - predictedVelocityParallel;
+
+            float stepMaxAccelerationVelocityChange = _moveMaxAcceleration * scaledDeltaTime * _moveAerialFriction;
+            float stepMaxDecelerationVelocityChange = _moveMaxDeceleration * scaledDeltaTime * _moveAerialFriction;
+
+            trueVelocity += Vector3.ClampMagnitude(Vector3.ClampMagnitude(predictedVelocityAlongSurfacePlane + moveVector, moveMaxSpeed) - predictedVelocityAlongSurfacePlane, stepMaxAccelerationVelocityChange);
         }
-
-        transform.rotation.ShortestRotation(Quaternion.LookRotation(GetTargetForward().RemoveComponentAlongAxis(_up), _up)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
-        trueAngularVelocity += orientStrength * rotDegrees * rotAxis - _orientDamp * SimulationController.globalTimeScale * relativeTimeScale * trueAngularVelocity;
-
-        Vector3 moveVector = GetTargetMove().FlattenAgainstAxis(normal) * _moveMaxSpeed; //FIX ALL THIS WHAT IS EVEN HAPPENING
-        Vector3 predictedVelocityAlongSurfacePlane = (trueVelocity - surfaceVelocity).RemoveComponentAlongAxis(normal);
-        Vector3 predictedVelocityParallel = predictedVelocityAlongSurfacePlane.ComponentAlongAxis(moveVector);
-        Vector3 predictedVelocityPerpendicular = predictedVelocityAlongSurfacePlane - predictedVelocityParallel;
-
-        float stepMaxAccelerationVelocityChange = _moveMaxAcceleration * scaledDeltaTime * friction;
-        float stepMaxDecelerationVelocityChange = _moveMaxDeceleration * scaledDeltaTime * friction;
-
-        Vector3 accelerationForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(predictedVelocityAlongSurfacePlane + moveVector, moveMaxSpeed) - predictedVelocityAlongSurfacePlane, stepMaxAccelerationVelocityChange);
-
-        Vector3 velocityChangeForce;
-        if (predictedVelocityAlongSurfacePlane.SignedMagnitudeInDirection(moveVector) >= 0f) //accelerating in moveDirection
-        {
-            velocityChangeForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector - predictedVelocityParallel, stepMaxAccelerationVelocityChange) - predictedVelocityPerpendicular, stepMaxDecelerationVelocityChange);
-        }
-        else
-        {
-            velocityChangeForce = Vector3.ClampMagnitude(Vector3.ClampMagnitude(moveVector + predictedVelocityParallel, stepMaxAccelerationVelocityChange) - Vector3.ClampMagnitude(predictedVelocityParallel, stepMaxDecelerationVelocityChange) - predictedVelocityPerpendicular, stepMaxDecelerationVelocityChange);
-        }
-
-        trueVelocity += Vector3.Lerp(accelerationForce, velocityChangeForce, moveControl);
     }
 
     public override void LateSimulationUpdate(float deltaTime)

@@ -103,7 +103,7 @@ public class BasicEntity : Entity
 
     public void SetVelocities(Vector3 velocity, Vector3 angularVelocity) //Does not apply if SimulationController.globalTimeScale * relativeTimeScale == 0f or isKinematic
     {
-        _rb.velocity = velocity;
+        _rb.linearVelocity = velocity;
         _rb.angularVelocity = angularVelocity;
 
         _velocityChangeAccumulator = default;
@@ -135,15 +135,15 @@ public class BasicEntity : Entity
 
         if (timeScale == 0f || _rb.isKinematic)
         {
-            _rb.velocity = default;
+            _rb.linearVelocity = default;
             _rb.angularVelocity = default;
         }
         else
         {
-            Vector3 trueVelocity = _rb.velocity + (_velocityChangeAccumulator + timeScale * deltaTime * _accelerationAccumulator) * timeScale;
+            Vector3 trueVelocity = _rb.linearVelocity + (_velocityChangeAccumulator + timeScale * deltaTime * _accelerationAccumulator) * timeScale;
             Vector3 trueAngularVelocity = _rb.angularVelocity + (_angularVelocityChangeAccumulator + timeScale * deltaTime * _angularAccelerationAccumulator) * timeScale;
             ModifyTrueVelocities(ref trueVelocity, ref trueAngularVelocity, deltaTime);
-            _rb.velocity = trueVelocity;
+            _rb.linearVelocity = trueVelocity;
             _rb.angularVelocity = trueAngularVelocity;
         }
 
@@ -162,7 +162,7 @@ public class BasicEntity : Entity
             return;
         }
 
-        _velocity = _rb.velocity / timeScale;
+        _velocity = _rb.linearVelocity / timeScale;
         _angularVelocity = _rb.angularVelocity / timeScale;
     }
 
