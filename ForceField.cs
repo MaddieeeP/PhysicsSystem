@@ -13,20 +13,20 @@ public abstract class ForceField : SimulationObject
     public bool isGravityForce { get { return _isGravityForce; } }
     public float magnitude { get { return Math.Abs(_magnitude); } }
 
-    protected abstract List<Entity> GetCollidingEntities();
-    public abstract Vector3 GetForce(Entity entity);
+    protected abstract List<IEntity> GetCollidingEntities();
+    public abstract Vector3 GetForce(IEntity IEntity);
 
     public override void SimulationUpdate(float deltaTime)
     {
-        List<Entity> entities = GetCollidingEntities();
-        foreach (Entity entity in entities)
+        List<IEntity> entities = GetCollidingEntities();
+        foreach (IEntity IEntity in entities)
         {
             if (_isGravityForce)
             {
-                entity.AddGravityForce(GetForce(entity));
+                IEntity.AddGravityForce(GetForce(IEntity));
                 continue;
             }
-            entity.AddForce(GetForce(entity), forceMode);
+            IEntity.AddForce(GetForce(IEntity), forceMode);
         }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Splines;
@@ -15,13 +14,13 @@ public class ForceTwist : ForceField
     [SerializeField] protected int _sampleResolution = 3;
     [SerializeField] protected int _sampleIterations = 5;
 
-    protected override List<Entity> GetCollidingEntities()
+    protected override List<IEntity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapSphere(_overlapSphereCenter, _radius);
-        List<Entity> entities = new List<Entity>();
+        List<IEntity> entities = new List<IEntity>();
         foreach (Collider collider in colliders)
         {
-            Entity entity = collider.GetComponent<Entity>();
+            IEntity entity = collider.GetComponent<IEntity>();
             if (entity != null)
             {
                 entities.Add(entity);
@@ -30,16 +29,16 @@ public class ForceTwist : ForceField
         return entities;
     }
 
-    public override Vector3 GetForce(Entity entity)
+    public override Vector3 GetForce(IEntity entity)
     {
-        splineContainer.GetClosestPoint(entity.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
+        splineContainer.GetNearestPointInWorldSpace(entity.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
 
         if (distance > _sampleMaxDistance)
         {
             return default;
         }
 
-        splineContainer.Spline.Evaluate(t, out Vector3 splinePoint, out Vector3 forward, out Vector3 up);
+        splineContainer.EvaluateInWorldSpace(t, out Vector3 splinePoint, out Vector3 forward, out Vector3 up);
         Vector3 positionDifference = splinePoint - entity.transform.position;
 
         if (positionDifference.ComponentAlongAxis(forward).magnitude > _maxClosestPointInaccuracy)

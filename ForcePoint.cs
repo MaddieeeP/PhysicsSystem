@@ -9,13 +9,13 @@ public class ForcePoint : ForceField
     [SerializeField] protected bool _repel = false;
     protected int _repelMultiplier { get { return _repel ? -1 : 1; } }
 
-    protected override List<Entity> GetCollidingEntities()
+    protected override List<IEntity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapSphere(transform.position, _radius);
-        List<Entity> entities = new List<Entity>();
+        List<IEntity> entities = new List<IEntity>();
         foreach (Collider collider in colliders)
         {
-            Entity entity = collider.GetComponent<Entity>();
+            IEntity entity = collider.GetComponent<IEntity>();
             if (entity != null)
             {
                 entities.Add(entity);
@@ -24,7 +24,7 @@ public class ForcePoint : ForceField
         return entities;
     }
 
-    public override Vector3 GetForce(Entity entity)
+    public override Vector3 GetForce(IEntity entity)
     {
         Vector3 positionDifference = transform.position - entity.transform.position;
         float falloffMultiplier = Math.Clamp(_fallOff.Evaluate(positionDifference.magnitude / _radius), 0f, 1f);

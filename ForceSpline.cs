@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Splines;
@@ -17,13 +16,13 @@ public class ForceSpline : ForceField
 
     protected int _repelMultiplier { get { return _repel ? -1 : 1; } }
 
-    protected override List<Entity> GetCollidingEntities()
+    protected override List<IEntity> GetCollidingEntities()
     {
         Collider[] colliders = Physics.OverlapSphere(_overlapSphereCenter, _radius);
-        List<Entity> entities = new List<Entity>();
+        List<IEntity> entities = new List<IEntity>();
         foreach (Collider collider in colliders)
         {
-            Entity entity = collider.GetComponent<Entity>();
+            IEntity entity = collider.GetComponent<IEntity>();
             if (entity != null)
             {
                 entities.Add(entity);
@@ -32,10 +31,10 @@ public class ForceSpline : ForceField
         return entities;
     }
 
-    public override Vector3 GetForce(Entity entity)
+    public override Vector3 GetForce(IEntity entity)
     {
-        Vector3 splinePoint = splineContainer.GetClosestPoint(entity.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
-        splineContainer.Spline.Evaluate(t, out Vector3 position, out Vector3 forward, out Vector3 up);
+        Vector3 splinePoint = splineContainer.GetNearestPointInWorldSpace(entity.transform.position, out float t, out float distance, _sampleResolution, _sampleIterations);
+        splineContainer.EvaluateInWorldSpace(t, out Vector3 position, out Vector3 forward, out Vector3 up);
 
         if (distance > _sampleMaxDistance) 
         { 

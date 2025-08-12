@@ -7,7 +7,6 @@ public abstract class SimulationObject : MonoBehaviour
     private float _relativeTimeScale = 1f;
     private float _relativeTimeScaleBuffer = 1f;
 
-    
     public SimulationMode simulationMode { get { return _simulationMode; } }
     public float relativeTimeScale { get { return _relativeTimeScale; } }
 
