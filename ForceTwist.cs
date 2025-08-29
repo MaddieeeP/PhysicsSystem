@@ -51,6 +51,6 @@ public class ForceTwist : ForceField
         Vector3 entityDown = (entity.gravity == Vector3.zero) ? -entity.transform.up : entity.gravity;
         Quaternion direction = Quaternion.LookRotation(entityDown, entity.transform.forward).FindClosest(gravityDirections);
 
-        return direction * Vector3.forward * magnitude * Math.Clamp(_fallOff.Evaluate(distance / _sampleMaxDistance), 0f, 1f);
+        return direction * Vector3.forward * _signedMagnitude;
     }
 }

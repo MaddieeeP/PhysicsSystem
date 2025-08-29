@@ -1,78 +1,67 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
+[DefaultExecutionOrder(-100)]
 public class SimulationController : MonoBehaviour
 {
-    private static float _globalTimeScale = 1f; //Use for slowdown and speed up effect and pausing
-    private static float _globalTimeScaleBuffer = 1f;
-    private GameObject _intersecter;
+    private static Dictionary<PhysicsScene, SimulationController> _Instances;
 
-    private static SimulationController Instance;
-    public static event Action<float> UnityUpdate;
-    public static event Action<float> UnityLateUpdate;
-    public static event Action<float> UnityFixedUpdate;
-    public static event Action<float> UnityLateFixedUpdate;
+    [SerializeField] private bool _simulateOnFixedUpdate = false;
+    [SerializeField] private float _simulationDeltaTime = 0.2f;
+    private float _stepSimulationDeltaTime; //Step size must be consistent across each step even if simulationDeltaTime is changed
 
-    public static float globalTimeScale { get { return _globalTimeScale; } }
+    public event Action PreSimulationUpdate;
+    public event Action PostSimulationUpdate;
+    
+    public static Dictionary<PhysicsScene, SimulationController> Instances { get { return _Instances; } }
+    public float simulationDeltaTime { get { return _stepSimulationDeltaTime; } set { _simulationDeltaTime = value; } }
 
-    public static void SetGlobalTimeScale(float timeScale)
+    public void OnEnable()
     {
-        _globalTimeScaleBuffer = timeScale;
-    }
+        PhysicsScene physicsScene = gameObject.scene.GetPhysicsScene();
 
-    void Start()
-    {
-        if (Instance != null)
+        if (_Instances == null)
+        {
+            _Instances = new Dictionary<PhysicsScene, SimulationController>();
+        }
+
+        if (_Instances.ContainsKey(physicsScene) && _Instances[physicsScene] != this)
         {
             Destroy(gameObject);
             return;
         }
 
-        Instance = this;
+        _Instances[physicsScene] = this;
         DontDestroyOnLoad(gameObject);
-
-        //Create a couple of colliders to trigger OnTriggerStay after Unity simulates physics collisions
-        Collider collider = gameObject.AddComponent<SphereCollider>();
-        collider.isTrigger = true;
-
-        _intersecter = new GameObject();
-        _intersecter.AddComponent<SphereCollider>();
-        Rigidbody rb = _intersecter.AddComponent<Rigidbody>();
-        rb.useGravity = false;
-        _intersecter.transform.parent = transform;
-        _intersecter.transform.position = transform.position;
-        _intersecter.name = "Intersecter";
     }
-    
-    void OnDestroy()
+
+    public void OnDestroy()
     {
-        Destroy(_intersecter);
-        if (Instance == this)
+        foreach (PhysicsScene physicsScene in _Instances.Keys) 
         {
-            Instance = null;
+            if (physicsScene.IsValid())
+            {
+                continue;
+            }
+            _Instances.Remove(physicsScene);
         }
     }
 
-    void Update()
+    public void Simulate() //Collision and Trigger events are scheduled by Physics.Simulate so will not behave properly if Simulate is called multiple times consecutively
     {
-        UnityUpdate?.Invoke(Time.deltaTime);
+        _stepSimulationDeltaTime = _simulationDeltaTime;
+
+        PreSimulationUpdate?.Invoke();
+        Physics.Simulate(_stepSimulationDeltaTime);
+        PostSimulationUpdate?.Invoke();
     }
 
-    void LateUpdate()
+    public void FixedUpdate()
     {
-        UnityLateUpdate?.Invoke(Time.deltaTime);
-        _globalTimeScale = _globalTimeScaleBuffer;
-    }
-
-    void FixedUpdate()
-    {
-        UnityFixedUpdate?.Invoke(Time.fixedDeltaTime);
-    }
-
-    void OnTriggerStay()
-    {
-        UnityLateFixedUpdate?.Invoke(Time.fixedDeltaTime);
-        _globalTimeScale = _globalTimeScaleBuffer;
-        _intersecter.transform.position = transform.position;
+        if (_simulateOnFixedUpdate)
+        {
+            Simulate();
+        }
     }
 }

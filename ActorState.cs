@@ -8,10 +8,9 @@ public abstract class ActorState
 
     //Getters and setters
     public abstract string stateID { get; }
-    public abstract Vector3 up { get; }
 
     public abstract bool TryStart();
 
-    public virtual void SimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime) { }
-    public virtual void LateSimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime) { }
+    public virtual void SimulationUpdate(ref Vector3 linearVelocity, ref Vector3 angularVelocity) { }
+    public virtual void LateSimulationUpdate(ref Vector3 linearVelocity, ref Vector3 angularVelocity) { }
 }

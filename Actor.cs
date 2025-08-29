@@ -6,7 +6,6 @@ public abstract class Actor : BasicEntity
     protected ActorState _currentState;
 
     //getters and setters
-    public override Vector3 up { get { return _currentState.up; } }
     public abstract Vector3 basePosition { get; }
     public abstract float baseHeight { get; }
 
@@ -15,26 +14,26 @@ public abstract class Actor : BasicEntity
 
     public abstract void MoveBasePosition(Vector3 position);
 
-    public override void SimulationUpdate(float deltaTime)
+    public override void PreSimulationUpdate()
     {
-        base.SimulationUpdate(deltaTime);
+        base.PreSimulationUpdate();
 
-        Vector3 actualLinearVelocityCopy = actualLinearVelocity;
-        Vector3 actualAngularVelocityCopy = actualAngularVelocity;
-        _currentState.SimulationUpdate(ref actualLinearVelocityCopy, ref actualAngularVelocityCopy, deltaTime);
-        actualLinearVelocity = actualLinearVelocityCopy;
-        actualAngularVelocity = actualAngularVelocityCopy;
+        Vector3 linearVelocityCopy = linearVelocity;
+        Vector3 angularVelocityCopy = angularVelocity;
+        _currentState.SimulationUpdate(ref linearVelocityCopy, ref angularVelocityCopy);
+        linearVelocity = linearVelocityCopy;
+        angularVelocity = angularVelocityCopy;
     }
 
-    public override void LateSimulationUpdate(float deltaTime)
+    public override void PostSimulationUpdate()
     {
-        base.LateSimulationUpdate(deltaTime);
+        base.PostSimulationUpdate();
 
-        Vector3 actualLinearVelocityCopy = actualLinearVelocity;
-        Vector3 actualAngularVelocityCopy = actualAngularVelocity;
-        _currentState.LateSimulationUpdate(ref actualLinearVelocityCopy, ref actualAngularVelocityCopy, deltaTime);
-        actualLinearVelocity = actualLinearVelocityCopy;
-        actualAngularVelocity = actualAngularVelocityCopy;
+        Vector3 linearVelocityCopy = linearVelocity;
+        Vector3 angularVelocityCopy = angularVelocity;
+        _currentState.LateSimulationUpdate(ref linearVelocityCopy, ref angularVelocityCopy);
+        linearVelocity = linearVelocityCopy;
+        angularVelocity = angularVelocityCopy;
 
         UpdateCurrentState();
     }

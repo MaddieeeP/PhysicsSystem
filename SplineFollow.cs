@@ -25,18 +25,17 @@ public class SplineFollow : SimulationObject, IEntity //FIX - add editor with sp
 
     public bool isKinematic { get { return _rb.isKinematic; } set { _rb.isKinematic = value; } }
     public Collider collider { get { return _collider; } }
-    public Vector3 up { get { return transform.up; } }
 
-    public void AddGravityForce(Vector3 force) { }
+    public void TrySetGravity(Vector3 force, int priority) { }
     public void AddForce(Vector3 force, ForceMode forceMode = ForceMode.Force) { }
     public void AddTorque(Vector3 torque, ForceMode forceMode = ForceMode.Force) { }
     public void AddForceAtPosition(Vector3 force, Vector3 position, ForceMode forceMode = ForceMode.Force) { }
 
-    public override void SimulationUpdate(float deltaTime)
+    public override void PreSimulationUpdate()
     {
         if (_movingInPositiveDirection)
         {
-            _t += _tSpeed * deltaTime * relativeTimeScale * SimulationController.globalTimeScale;
+            _t += _tSpeed * simulationController.simulationDeltaTime;
             if (_t >= 1f)
             {
                 _t = 2 - _t;
@@ -45,7 +44,7 @@ public class SplineFollow : SimulationObject, IEntity //FIX - add editor with sp
         }
         else
         {
-            _t -= _tSpeed * deltaTime * relativeTimeScale * SimulationController.globalTimeScale;
+            _t -= _tSpeed * simulationController.simulationDeltaTime;
             if (_t <= 0f)
             {
                 _t = -_t;
@@ -54,18 +53,18 @@ public class SplineFollow : SimulationObject, IEntity //FIX - add editor with sp
         }
 
         _splineContainer.EvaluateInWorldSpace(_curve.Evaluate(_t), out Vector3 position, out Vector3 forward, out Vector3 up);
-        _trueVelocityBuffer = (position - transform.position) / deltaTime;
+        _trueVelocityBuffer = (position - transform.position) / simulationController.simulationDeltaTime;
         _rb.linearVelocity = _trueVelocityBuffer;
         Quaternion.Inverse(transform.rotation).ToAngleAxis(out float angle, out Vector3 axis);
-        _rb.angularVelocity = angle * axis * Mathf.Deg2Rad / deltaTime;
+        _rb.angularVelocity = angle * axis * Mathf.Deg2Rad / simulationController.simulationDeltaTime;
     }
 
-    public override void LateSimulationUpdate(float deltaTime)
+    public override void PostSimulationUpdate()
     {
         _linearVelocity = _trueVelocityBuffer;
-        _angularVelocity = _rb.angularVelocity / relativeTimeScale * SimulationController.globalTimeScale;
+        _angularVelocity = _rb.angularVelocity;
         _bufferedT = _t;
-        base.LateSimulationUpdate(deltaTime);
+        base.PostSimulationUpdate();
     }
 
     public RaycastHitInfoVerbose GetPredictedTransformedSurfaceInfo(RaycastHitInfoVerbose surfaceInfo, float deltaTime)
@@ -74,7 +73,7 @@ public class SplineFollow : SimulationObject, IEntity //FIX - add editor with sp
 
         if (_movingInPositiveDirection)
         {
-            nextT =_bufferedT + _tSpeed * deltaTime * relativeTimeScale * SimulationController.globalTimeScale;
+            nextT =_bufferedT + _tSpeed * deltaTime;
             if (nextT >= 1f)
             {
                 nextT = 2 - nextT;
@@ -82,7 +81,7 @@ public class SplineFollow : SimulationObject, IEntity //FIX - add editor with sp
         }
         else
         {
-            nextT = _bufferedT - _tSpeed * deltaTime * relativeTimeScale * SimulationController.globalTimeScale;
+            nextT = _bufferedT - _tSpeed * deltaTime;
             if (nextT <= 0f)
             {
                 nextT = -nextT;

@@ -12,11 +12,9 @@ public class ActorRailGrind : ActorState
     private float _t = default;
     private Vector3 _splinePosition = default;
     private Vector3 _splineTangent = default;
-    private Vector3 _up = default;
 
     //getters and setters
     public override string stateID { get { return "railGrind"; } }
-    public override Vector3 up { get { return _up; } }
     public Jump jump { get { return _jump; } }
 
     public override bool TryStart()
@@ -43,7 +41,6 @@ public class ActorRailGrind : ActorState
                 _t = t;
                 _splinePosition = closestPoint;
                 _splineTangent = closestTangent;
-                _up = _actor.transform.up.FlattenAgainstAxis(_splineTangent);
                 return true;
             }
         }
@@ -51,12 +48,12 @@ public class ActorRailGrind : ActorState
         return false;
     }
 
-    public override void SimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime)
+    public override void SimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity)
     {
         Vector3 velocityParallel = actualLinearVelocity.ComponentAlongAxis(_splineTangent);
         Vector3 velocityPerpendicular = actualLinearVelocity - velocityParallel;
 
-        float distance = velocityParallel.magnitude * deltaTime;
+        float distance = velocityParallel.magnitude * _actor.simulationController.simulationDeltaTime;
         float direction = Mathf.Sign(Vector3.Dot(velocityParallel, _splineTangent));
         if (velocityParallel == Vector3.zero)
         {
@@ -68,7 +65,7 @@ public class ActorRailGrind : ActorState
         _actor.MoveBasePosition(_splinePosition);
         _rail.EvaluateInWorldSpace(clampedT, out _splinePosition, out _splineTangent, out Vector3 splineNormal);
         
-        Quaternion rotationError = _actor.transform.rotation.ShortestRotation(Quaternion.LookRotation(_splineTangent, _up));
+        Quaternion rotationError = _actor.transform.rotation.ShortestRotation(Quaternion.LookRotation(_splineTangent, _actor.transform.up));
         rotationError.ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
 
         actualLinearVelocity = direction * velocityParallel.magnitude * _splineTangent;
@@ -85,7 +82,7 @@ public class ActorRailGrind : ActorState
         }
     }
 
-    public override void LateSimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime)
+    public override void LateSimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity)
     {
         if (_t == -1f)
         {
@@ -120,7 +117,7 @@ public class ActorRailGrind : ActorState
 
             float duration = Time.time - _startTime;
             _startTime = -1f;
-            _actor.AddForce(_jumpSpeed * (0.5f + Math.Clamp(duration, 0f, 1f) * 0.5f) * _actor.up, ForceMode.VelocityChange);
+            _actor.AddForce(_jumpSpeed * (0.5f + Math.Clamp(duration, 0f, 1f) * 0.5f) * _actor.transform.up, ForceMode.VelocityChange);
         }
     }
 }

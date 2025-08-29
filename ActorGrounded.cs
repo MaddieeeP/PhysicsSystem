@@ -15,24 +15,21 @@ public class ActorGrounded : ActorState
     [SerializeField] private AnimationCurve _groundAngleInfluence;
     [SerializeField] private Jump _jump = new Jump();
 
-    private Vector3 _up;
     private Vector3 _move;
     private RaycastHitInfoVerbose _surfaceInfo;
 
     //Getters and setters
     public override string stateID { get { return "grounded"; } }
-    public override Vector3 up { get { return _up; } }
     public Vector3 move { get { return _move; } set { _move = value; } }
     public Jump jump { get { return _jump; } }
 
     public override bool TryStart()
     {
-        Vector3 sweepVector = _actor.linearVelocity / _actor.relativeTimeScale * 0.05f - _up * (_actor.baseHeight + _hoverError); //0.05f is an arbitary constant for how long the time step this function considers is; it must be a constant to maintain predictability
+        Vector3 sweepVector = _actor.linearVelocity * 0.05f - _actor.transform.up * (_actor.baseHeight + _hoverError); //0.05f is an arbitary constant for how long the time step this function considers is; it must be a constant to maintain predictability
         RaycastHit[] hits = Physics.RaycastAll(_actor.basePosition, sweepVector, sweepVector.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
 
         Vector3 prevNormal = -_actor.gravity;
         _surfaceInfo = null;
-        _up = -_actor.gravity.normalized;
 
         foreach (RaycastHit hit in hits)
         {
@@ -45,7 +42,6 @@ public class ActorGrounded : ActorState
             if (normalChange <= _maxNormalChange)
             {
                 _surfaceInfo = new RaycastHitInfoVerbose(hit, _actor.transform.forward);
-                _up = Vector3.Lerp(_up, hit.normal, _groundAngleInfluence.Evaluate(normalChange)).normalized;
                 return true;
             }
         }
@@ -53,11 +49,9 @@ public class ActorGrounded : ActorState
         return false;
     }
 
-    public override void SimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime)
+    public override void SimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity)
     {
-        float scaledDeltaTime = deltaTime * _actor.relativeTimeScale * SimulationController.globalTimeScale;
-
-        Vector3 targetForward = (_actor.linearVelocity * _actor.relativeTimeScale * SimulationController.globalTimeScale).magnitude > _minimumDynamicSpeed ? _actor.linearVelocity.normalized : _actor.transform.forward;
+        Vector3 targetForward = _actor.linearVelocity.magnitude > _minimumDynamicSpeed ? _actor.linearVelocity.normalized : _actor.transform.forward;
 
         float hoverError;
         float speedFromSurface;
@@ -67,14 +61,14 @@ public class ActorGrounded : ActorState
         IEntity surfaceEntity = _surfaceInfo.transform.GetComponent<IEntity>();
         if (surfaceEntity != null)
         {
-            RaycastHitInfoVerbose adjustedSurfaceInfo = surfaceEntity.GetPredictedTransformedSurfaceInfo(_surfaceInfo, deltaTime);
+            RaycastHitInfoVerbose adjustedSurfaceInfo = surfaceEntity.GetPredictedTransformedSurfaceInfo(_surfaceInfo, _actor.simulationController.simulationDeltaTime);
 
-            Vector3 surfaceTrueVelocity = surfaceEntity.linearVelocity * surfaceEntity.relativeTimeScale * SimulationController.globalTimeScale;
-            Vector3 surfaceNextTrueVelocity = (adjustedSurfaceInfo.point - _surfaceInfo.point) / deltaTime;
+            Vector3 surfaceTrueVelocity = surfaceEntity.linearVelocity;
+            Vector3 surfaceNextTrueVelocity = (adjustedSurfaceInfo.point - _surfaceInfo.point) / _actor.simulationController.simulationDeltaTime;
 
             actualLinearVelocity += (surfaceNextTrueVelocity - surfaceTrueVelocity).RemoveComponentAlongAxis(adjustedSurfaceInfo.normal) * surfaceEntity.collider.material.staticFriction; //Apply surface acceleration
 
-            hoverError = _actor.baseHeight - (_actor.basePosition - adjustedSurfaceInfo.point).ComponentAlongAxis(_up).magnitude;
+            hoverError = _actor.baseHeight - (_actor.basePosition - adjustedSurfaceInfo.point).ComponentAlongAxis(-_actor.gravity).magnitude;
             speedFromSurface = (actualLinearVelocity - surfaceNextTrueVelocity).SignedMagnitudeInDirection(adjustedSurfaceInfo.normal);
             normal = adjustedSurfaceInfo.normal;
             surfaceVelocity = surfaceNextTrueVelocity;
@@ -92,17 +86,20 @@ public class ActorGrounded : ActorState
             actualLinearVelocity += (hoverError + dampingForce) * _surfaceInfo.normal;
         }
 
-        _actor.transform.rotation.ShortestRotation(Quaternion.LookRotation(targetForward.RemoveComponentAlongAxis(_up), _up)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
-        actualAngularVelocity += _orientStrength * rotDegrees * rotAxis - _orientDamp * SimulationController.globalTimeScale * _actor.relativeTimeScale * actualAngularVelocity;
+
+        Vector3 up = Vector3.Lerp(-_actor.gravity, _surfaceInfo.normal, _groundAngleInfluence.Evaluate(Vector3.Dot(_actor.gravity, _surfaceInfo.normal) / 2f + 0.5f)).normalized;
+        Vector3 forward = targetForward.RemoveComponentAlongAxis(_actor.transform.up);
+        _actor.transform.rotation.ShortestRotation(Quaternion.LookRotation(forward, up)).ToAngleAxis(out float rotDegrees, out Vector3 rotAxis);
+        actualAngularVelocity += _orientStrength * rotDegrees * rotAxis - _orientDamp * actualAngularVelocity;
 
         Vector3 moveVector = _move.FlattenAgainstAxis(normal) * _maxSpeed;
         Vector3 predictedVelocityAlongSurfacePlane = (actualLinearVelocity - surfaceVelocity).RemoveComponentAlongAxis(normal);
         Vector3 predictedVelocityParallel = predictedVelocityAlongSurfacePlane.ComponentAlongAxis(moveVector);
         Vector3 predictedVelocityPerpendicular = predictedVelocityAlongSurfacePlane - predictedVelocityParallel;
 
-        float friction = actualLinearVelocity.magnitude / _actor.relativeTimeScale > _minimumDynamicSpeed ? _surfaceInfo.collider.material.staticFriction : _surfaceInfo.collider.material.dynamicFriction;
-        float stepMaxAccelerationVelocityChange = _maxAcceleration * scaledDeltaTime * friction;
-        float stepMaxDecelerationVelocityChange = _maxDeceleration * scaledDeltaTime * friction;
+        float friction = actualLinearVelocity.magnitude > _minimumDynamicSpeed ? _surfaceInfo.collider.material.staticFriction : _surfaceInfo.collider.material.dynamicFriction;
+        float stepMaxAccelerationVelocityChange = _maxAcceleration;
+        float stepMaxDecelerationVelocityChange = _maxDeceleration;
 
         if (predictedVelocityAlongSurfacePlane.SignedMagnitudeInDirection(moveVector) >= 0f) //accelerating in moveDirection
         {
@@ -114,9 +111,9 @@ public class ActorGrounded : ActorState
         }
     }
 
-    public override void LateSimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity, float deltaTime)
+    public override void LateSimulationUpdate(ref Vector3 actualLinearVelocity, ref Vector3 actualAngularVelocity)
     {
-        Vector3 sweepVector = actualLinearVelocity / _actor.relativeTimeScale * 0.05f - _up * (_actor.baseHeight + _hoverError); //0.05f is an arbitary constant for how long the time step this function considers is; it must be a constant to maintain predictability
+        Vector3 sweepVector = actualLinearVelocity * 0.05f - _actor.transform.up * (_actor.baseHeight + _hoverError); //0.05f is an arbitary constant for how long the time step this function considers is; it must be a constant to maintain predictability
         RaycastHit[] hits = Physics.RaycastAll(_actor.basePosition, sweepVector, sweepVector.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
 
         Vector3 prevNormal;
@@ -130,7 +127,6 @@ public class ActorGrounded : ActorState
         }
 
         _surfaceInfo = null;
-        _up = -_actor.gravity.normalized;
 
         foreach (RaycastHit hit in hits)
         {
@@ -143,7 +139,6 @@ public class ActorGrounded : ActorState
             if (normalChange <= _maxNormalChange)
             {
                 _surfaceInfo = new RaycastHitInfoVerbose(hit, _actor.transform.forward);
-                _up = Vector3.Lerp(_up, hit.normal, _groundAngleInfluence.Evaluate(normalChange)).normalized;
                 return;
             }
         }
@@ -177,7 +172,7 @@ public class ActorGrounded : ActorState
 
             float duration = Time.time - _startTime;
             _startTime = -1f;
-            _actor.AddForce(_jumpSpeed * (0.5f + Math.Clamp(duration, 0f, 1f) * 0.5f) * _actor.up, ForceMode.VelocityChange);
+            _actor.AddForce(_jumpSpeed * (0.5f + Math.Clamp(duration, 0f, 1f) * 0.5f) * -_actor.gravity, ForceMode.VelocityChange);
         }
     }
 }

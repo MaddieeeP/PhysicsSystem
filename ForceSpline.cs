@@ -12,9 +12,6 @@ public class ForceSpline : ForceField
     [SerializeField] protected float _sampleMaxDistance = float.PositiveInfinity;
     [SerializeField] protected int _sampleResolution = 4;
     [SerializeField] protected int _sampleIterations = 2;
-    [SerializeField] protected bool _repel = true;
-
-    protected int _repelMultiplier { get { return _repel ? -1 : 1; } }
 
     protected override List<IEntity> GetCollidingEntities()
     {
@@ -48,6 +45,6 @@ public class ForceSpline : ForceField
             return default;
         }
 
-        return positionDifference.normalized * magnitude * Math.Clamp(_fallOff.Evaluate(distance / _sampleMaxDistance), 0f, 1f) * _repelMultiplier;
+        return positionDifference.normalized * _signedMagnitude;
     }
 }

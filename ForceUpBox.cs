@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ForceDownBox : ForceField
+public class ForceUpBox : ForceField
 {
     [SerializeField] protected Vector3 _halfExtents;
 
@@ -22,7 +22,6 @@ public class ForceDownBox : ForceField
 
     public override Vector3 GetForce(IEntity entity)
     {
-        float falloffMultiplier = 1f; //FIX - use relative distance along relative y axis
-        return transform.up * -magnitude * falloffMultiplier;
+        return transform.up * _signedMagnitude;
     }
 }
